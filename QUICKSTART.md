@@ -72,4 +72,4 @@ reads their knobs from the pedal and plays them at once.
 
 - Something does not respond: the *Activity* box in the interface says what the bridge did.
 - Every MIDI message is logged in `logs/sysex.log`.
-- More: [README](README.md) – features, the Raspberry Pi, safety, what was measured.
+- More: [README](README.md), and every detail in the [Reference](docs/REFERENCE.md).
