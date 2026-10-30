@@ -1,0 +1,16 @@
+# Runs pi/install.sh at every start until the installation has worked (it needs the internet
+# once). install.sh puts this unit in place and switches it off again when it is done.
+
+[Unit]
+Description=MS Plus Bridge: finish the installation
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=!/var/lib/expression-bridge/installed
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash @BOOT@/expression-bridge/pi/install.sh
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target

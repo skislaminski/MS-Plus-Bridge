@@ -1,0 +1,2291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MS Plus Bridge</title>
+<style>
+  /* The look follows a 1970s monosynth: a black control panel with white lettering,
+     rocker switches in orange, blue and white, a pilot lamp that is green while the bridge
+     is ready and red while it is not. One look, no light mode. Every part of the panel folds,
+     so that only what is in use takes room. */
+  :root {
+    color-scheme: dark;
+    --panel: #151413; --soft: #211f1d; --card: #0e0d0c;
+    --ink: #f3f0e6; --muted: #b7b2a4; --line: rgba(243, 240, 230, .34);
+    --accent: #ee7a24; --accent-ink: #1c0e03; --blue: #6aa9df;
+    --lamp: #ff5433; --ok: #43d15f; --bad: #ff9a88;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; color: var(--ink); background: #000;
+         font: 14px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  main { max-width: 900px; margin: 14px auto 28px; padding: 12px 12px 4px;
+         background: linear-gradient(#1c1b19, var(--panel)); border: 1px solid #000; border-radius: 6px;
+         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 16px 34px rgba(0, 0, 0, .55); }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px;
+           margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+  h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .18em; margin: 0; font-weight: 700; white-space: nowrap; }
+  h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; margin: 0; font-weight: 700; color: var(--muted); }
+  .status { display: inline-flex; align-items: center; gap: 9px; color: var(--muted);
+            font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .dot { width: 13px; height: 13px; border-radius: 50%; flex: none; border: 1px solid #000;
+         background: radial-gradient(circle at 35% 35%, #ffd9c7, var(--lamp) 55%, #a81c08);
+         box-shadow: 0 0 10px rgba(255, 84, 51, .85); }
+  .dot.on { background: radial-gradient(circle at 35% 35%, #dcffd6, var(--ok) 55%, #14772b);
+            box-shadow: 0 0 10px rgba(67, 209, 95, .85); }
+
+  /* a part of the panel: its title and one line of state stay visible while it is folded */
+  details.panel { border: 1px solid var(--line); border-radius: 4px; margin-bottom: 8px; }
+  details.panel > summary, details.part > summary { display: flex; align-items: center; gap: 10px; cursor: pointer;
+                                                    list-style: none; }
+  details.panel > summary { padding: 8px 12px; }
+  details.panel > summary::-webkit-details-marker, details.part > summary::-webkit-details-marker,
+  details.row > summary::-webkit-details-marker { display: none; }
+  details.panel > summary::before, details.part > summary::before, details.row > summary::before {
+    content: "▸"; flex: none; width: 10px; color: var(--muted); font-size: 11px; }
+  details.panel[open] > summary::before, details.part[open] > summary::before,
+  details.row[open] > summary::before { content: "▾"; }
+  /* a block says its state only while it is folded (the expression pedal's position stays) */
+  details.panel[open] > summary .sum, details.part[open] > summary .sum { display: none; }
+  details.panel[open] > summary, details.part[open] > summary { justify-content: flex-start; }
+  .sum { flex: 1; min-width: 0; text-align: right; color: var(--muted); font-size: 12px;
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .body { padding: 2px 12px 10px; }
+  /* the parts of the preset: effects, expression pedal, scenes, synth parameters */
+  details.part { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; }
+  details.part > summary { padding: 2px 0; }
+  .part-body { padding-top: 8px; }
+
+  /* the preset selected on the pedal: its number and name, side by side; a click on the name renames it */
+  .name-line { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 16px; font-weight: 700;
+               letter-spacing: .06em; }
+  #preset { flex: none; font-variant-numeric: tabular-nums; }
+  button#preset { cursor: pointer; }                 /* a click lists the presets to choose from */
+  .name-line select { flex: 0 1 auto; min-width: 0; max-width: 240px; font-size: 14px; letter-spacing: 0; }
+  #presetSave { flex: none; margin-left: auto; padding: 3px 12px; font-size: 11px; }
+  #presetUndo { flex: none; margin-left: auto; display: inline-flex; align-items: center; min-width: 0;
+                padding: 0 6px; background: none; border: 0; box-shadow: none; color: var(--blue); }
+  #presetUndo:disabled { opacity: .3; }
+  #presetUndo + #presetSave { margin-left: 0; }
+  #presetSave.locked { opacity: .45; }                /* not approved: a click says what is missing */
+  /* the expression pedal's position, small, beside "Parameters" */
+  .pedal { flex: none; display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted);
+           font-size: 12px; font-variant-numeric: tabular-nums; }
+  .pedal b { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+  .meter { width: 56px; height: 6px; background: var(--card); border: 1px solid #000; border-radius: 2px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: linear-gradient(#f79243, #d5630f); }
+  #readout { min-width: 3ch; text-align: right; }
+  /* the DSP the chain takes, as the effect files declare it (the pedal counts the same to decide what a
+     preset can hold): one part per effect, an effect that is off dimmer; orange from 90 %, red beyond */
+  .dsp { flex: none; display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .dsp b { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+  .dsp-bar { width: 132px; height: 8px; background: var(--card); border: 1px solid #000; border-radius: 2px;
+             overflow: hidden; display: flex; }
+  .dsp-bar i { flex: none; height: 100%; background: var(--ink); opacity: .8; border-right: 2px solid var(--card); }
+  .dsp-bar i.off { opacity: .35; }
+  .dsp.near .dsp-bar i { background: var(--accent); }
+  .dsp.over .dsp-bar i { background: var(--bad); }
+  #dspReadout { min-width: 7ch; text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .dsp.over #dspReadout { color: var(--bad); }
+  details.part > summary .linked:empty + .dsp { margin-left: auto; }
+  details.part > summary .linked:not(:empty) + .dsp { margin-left: 12px; }
+  details.part > summary .linked:empty + .dsp[hidden] + .pedal { margin-left: auto; }
+  /* on a phone the title line holds Effects and the DSP; the pedal's position goes below, at the right
+     (with the DSP hidden it stays on the title line, as before) */
+  @media (max-width: 520px) {
+    #effectsPart > summary { flex-wrap: wrap; row-gap: 6px; }
+    #effectsPart > summary .dsp-bar { width: 96px; }
+    #effectsPart > summary .dsp:not([hidden]) + .pedal { flex-basis: 100%; justify-content: flex-end; }
+  }
+  .readout { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; margin: 0; }
+  .readout:empty { display: none; }
+  /* buttons are rocker switches: white, orange to apply or save, blue for everything that learns */
+  button { font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+           padding: 6px 10px; border-radius: 3px; border: 1px solid #000; cursor: pointer; white-space: nowrap;
+           color: #16120c; background: linear-gradient(#f7f3e8, #cbc5b3);
+           box-shadow: 0 2px 0 #000, inset 0 1px 0 rgba(255, 255, 255, .7); }
+  button.primary { background: linear-gradient(#f79243, #d5630f); color: var(--accent-ink); }
+  button.learn-btn { background: linear-gradient(#8ec0ec, #4d8fc9); }
+  button:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 #000; }
+  button:disabled { opacity: .4; cursor: default; }
+  select option:disabled { color: #6f6a60; }            /* an effect that would overflow the DSP */
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .learn { border: 1px solid var(--blue); border-radius: 4px; padding: 10px 12px; margin-top: 10px; }
+  .learn h3 { margin-bottom: 8px; color: var(--ink); }
+  .learn ol { margin: 0 0 8px; padding-left: 20px; }
+  .seen { font-variant-numeric: tabular-nums; margin: 0 0 10px; min-height: 1.4em; }
+
+  label { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+          color: var(--muted); }
+  input, select { font: inherit; font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; width: 100%;
+                  padding: 4px 6px; margin-top: 2px; border: 1px solid var(--line); border-radius: 3px;
+                  background: var(--card); color: var(--ink); }
+  .empty { color: var(--muted); margin: 0; font-size: 12px; }
+  code { color: var(--ink); }
+
+  /* an assigned parameter of the preset: one line, opened to change it */
+  .rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  #everyPreset { margin-top: 6px; }
+  #everyPreset:empty { display: none; }
+  details.row { background: var(--soft); border: 1px solid #000; border-radius: 4px; }
+  details.row > summary { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; list-style: none; }
+  details.row > summary b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  details.row > summary .sum { font-size: 12px; }
+  details.row.bad > summary .sum { color: var(--bad); }
+  .target { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px 8px; align-items: end;
+            padding: 2px 10px 10px 26px; }
+  .f-heel { grid-column: 1 / span 2; }
+  .f-toe { grid-column: 3 / span 2; }
+  .f-swap { grid-column: 5 / span 2; }
+  .f-curve { grid-column: 7 / span 3; }
+  .f-name { grid-column: 10 / span 3; }
+  .f-drop { grid-column: 1 / span 3; justify-self: start; }
+  .note { grid-column: 4 / -1; font-size: 12px; color: var(--muted); margin: 0; }
+  .adder { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 6px 8px; align-items: end; margin-top: 8px; }
+  details.row.waiting { border-color: var(--blue); }
+  details.row.waiting > summary .sum { color: var(--blue); }
+  .f-controller { grid-column: 1 / span 6; }
+  .f-learn { grid-column: 7 / span 3; justify-self: start; }
+  .adder button { margin-bottom: 1px; }
+
+  /* one row per thing a controller can be given: its name, whether it has one, and the switch for that */
+  .knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; margin: 6px 0 0; }
+  .knobs.one { grid-template-columns: minmax(0, 1fr); }
+  .knob { display: flex; align-items: center; gap: 8px; background: var(--soft); border: 1px solid #000;
+          border-radius: 4px; padding: 4px 8px; min-height: 34px; }
+  .knob b { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+  .knob span:not(.fx-knobs span, .link-chips span) { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden;
+               text-overflow: ellipsis; }
+  .knob.waiting { border-color: var(--blue); }
+  .knob.waiting span { color: var(--blue); }
+  .knob button { padding: 4px 8px; font-size: 10px; }
+  /* the arpeggiator and the step sequencer: the switch lights up orange while one plays */
+  .arp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .arp-head .knobs { flex: 0 1 270px; margin: 0; grid-template-columns: minmax(0, 1fr); }
+  .arp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px 10px; align-items: end; }
+  label.check { display: flex; align-items: center; gap: 8px; padding-bottom: 7px; }
+  label.check input { width: auto; margin: 0; }
+  /* its pattern as text, and the switches that record one */
+  .seq-row { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 8px; }
+  .seq-row label { flex: 1 1 280px; }
+  .seq-row input { font-family: ui-monospace, Menlo, monospace; }
+  .seq-row input[readonly] { border-color: var(--blue); }
+  /* the effects of the chain and the scenes: a switch, what it does, and the controller for it */
+  /* two columns read across: 1 3 5 on the left, 2 4 6 on the right; on a phone one column */
+  #effectRows { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .knob.fx { flex-wrap: wrap; }                    /* on a phone the controls go to a second line */
+  .knob.fx b { min-width: 92px; text-transform: none; letter-spacing: .02em; font-size: 13px;
+               display: inline-flex; align-items: center; }      /* centred with grip, lamp and controller */
+  .knob.fx b small { color: var(--muted); font-weight: 400; margin-right: 6px; }
+  .knob.fx b select { max-width: 190px; font-size: 13px; }     /* the effects to put into a place */
+  /* the grip an effect is dragged by to another place of the chain */
+  .knob.fx button.grip { min-width: 0; padding: 0 2px; margin-right: -4px; background: none; border: 0;
+                         box-shadow: none; color: var(--muted); font-size: 16px; line-height: 1; letter-spacing: 0;
+                         cursor: grab; touch-action: none; }
+  .knob.fx button.grip:hover:not(:disabled) { color: var(--ink); }
+  .knob.fx button.grip:disabled { opacity: .3; }
+  .knob.fx.dragging { opacity: .5; }
+  /* the small x that deletes an effect from the chain */
+  .knob.fx button.delete { min-width: 0; padding: 0 6px; margin-left: 4px; background: none; border: 0;
+                           box-shadow: none; color: var(--lamp); line-height: 0; display: inline-flex; align-items: center; }
+  .knob.fx button.delete:disabled { opacity: .3; }
+  /* the green + that adds an empty place to the chain */
+  #effectAdd { min-width: 0; margin-left: 6px; padding: 0 6px; background: none; border: 0; box-shadow: none;
+               color: var(--ok); line-height: 0; display: inline-flex; align-items: center; align-self: center; }
+  #effectAdd:disabled { opacity: .3; }
+  /* the editor: per effect of the chain, its knobs as sliders with their value */
+  .editor { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 8px; }
+  .editor-effect { background: var(--soft); border: 1px solid #000; border-radius: 4px; padding: 6px 8px 4px; }
+  .knob.fx .fx-knobs { flex: 1 0 100%; background: none; border: 0; padding: 4px 0 2px 22px; container-type: inline-size;
+                       display: grid; row-gap: 2px; }
+  .knob.fx.open { grid-column: 1 / -1; }                  /* an effect with its knobs open spans both columns */
+  .linked { flex: none; color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .linked:empty { display: none; }
+  details.part > summary .pedal { margin-left: 0; }
+  details.part > summary .linked { margin-left: auto; }
+  details.part:not([open]) > summary .linked { display: none; }
+  details.part > summary .linked:empty + .pedal { margin-left: auto; }
+  /* folded: its links as chips */
+  .link-chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 100%; padding-left: 22px; }
+  .link-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px 0 5px; border-radius: 10px;
+               font-size: 11px; color: var(--accent); background: rgba(238, 122, 36, .1); border: 1px solid rgba(238, 122, 36, .45);
+               white-space: nowrap; }
+  .link-chip svg { width: 12px; height: 12px; }
+  .link-chip b { font-size: 9px; letter-spacing: .06em; }
+  .link-chip em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .link-chip.cc { color: var(--blue); background: rgba(106, 169, 223, .1); border-color: rgba(106, 169, 223, .45); }
+  /* a knob: the symbol that links it, its name, the slider, its value, and the strip of its link; the
+     value as the pedal shows it, up to eight characters: 10ch, as capitals are wider than digits
+     ("OD-BOOST", "1/4×16") */
+  .fx-knobs .editor-knob { grid-template-columns: 24px 52px minmax(0, 1fr) 10ch 200px; min-height: 32px; padding: 0 4px;
+                           border-radius: 3px; }
+  /* the symbol: the expression pedal, or a knob for a controller; grey while nothing sets the knob,
+     orange once something does, blinking blue while it waits for its controller */
+  .fx-knobs button.link-icon { min-width: 0; width: 24px; height: 22px; padding: 0; display: grid; place-items: center;
+      background: none; border: 1px solid rgba(243, 240, 230, .18); border-radius: 3px; box-shadow: none; color: var(--muted);
+      opacity: .75; }
+  .fx-knobs button.link-icon:hover { opacity: 1; border-color: var(--line); color: var(--ink); }
+  .fx-knobs .editor-knob.linked button.link-icon { opacity: 1; color: var(--accent); border-color: rgba(238, 122, 36, .45);
+                                                   background: rgba(238, 122, 36, .12); }
+  .fx-knobs .editor-knob.waiting button.link-icon { opacity: 1; color: var(--blue); border-color: rgba(106, 169, 223, .7);
+      background: rgba(106, 169, 223, .14); animation: wait-blink 1s ease-in-out infinite; }
+  @keyframes wait-blink { 50% { opacity: .25; } }
+  .fx-knobs .knob-name { color: var(--muted); }
+  .fx-knobs .editor-knob.linked .knob-name { color: var(--ink); }
+  .fx-knobs .editor-knob.linked output { color: var(--accent); }
+  .fx-knobs .editor-knob.linked.cc output { color: var(--blue); }
+  .knob-hint { margin: 4px 0 0 4px; color: var(--muted); font-size: 11px; }
+  /* a linked knob's slider: heel and toe as handles, the learned range, the live point */
+  .link-slider { position: relative; height: 30px; touch-action: none; }
+  .link-track { position: absolute; left: 7px; right: 7px; top: 15px; height: 4px; border-radius: 2px; background: #050505;
+                box-shadow: inset 0 1px 1px rgba(0, 0, 0, .9), 0 1px 0 rgba(255, 255, 255, .06); }
+  .link-band { position: absolute; top: -1px; height: 6px; border-radius: 3px; background: rgba(238, 122, 36, .55); }
+  .editor-knob.cc .link-band { background: rgba(106, 169, 223, .55); }
+  .learned-range { position: absolute; top: -5px; height: 14px; border: 1px dashed rgba(243, 240, 230, .45); border-radius: 3px;
+                   pointer-events: none; }
+  .end-handle { position: absolute; top: 2px; width: 8px; height: 16px; margin: -8px 0 0 -4px; border-radius: 2px; cursor: ew-resize;
+                background: #e9e3d4; border: 1px solid #000; box-shadow: 0 1px 2px rgba(0, 0, 0, .8); touch-action: none; }
+  .end-handle::before { content: attr(data-label); position: absolute; left: 50%; bottom: 17px; transform: translateX(-50%);
+                        font-size: 8px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+  .end-handle:hover, .end-handle.drag { background: #fff; }
+  .end-handle.out { background: var(--bad); }
+  .end-handle.back, .link-band.back { transition: left .25s cubic-bezier(.3, 1.6, .5, 1), width .25s cubic-bezier(.3, 1.6, .5, 1); }
+  .live-point { position: absolute; top: 2px; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; cursor: ew-resize;
+                touch-action: none; border: 2px solid var(--accent); background: var(--panel); box-shadow: 0 0 6px rgba(238, 122, 36, .6); }
+  .live-point::after { content: ""; position: absolute; inset: -8px; }        /* a bigger target for a finger */
+  .live-point.drag { background: var(--accent); }
+  .editor-knob.cc .live-point { border-color: var(--blue); box-shadow: 0 0 6px rgba(106, 169, 223, .6); }
+  .range-note { position: absolute; right: 0; top: -3px; font-size: 10px; color: var(--bad); white-space: nowrap; pointer-events: none;
+                opacity: 0; transition: opacity .2s; }
+  .range-note.show { opacity: 1; }
+  /* the strip of a linked knob */
+  .link-strip > * { flex: none; }
+  .link-strip { display: flex; align-items: center; gap: 3px; height: 24px; padding: 0 3px; background: var(--card); border: 1px solid #000;
+                border-radius: 3px; min-width: 0; }
+  .link-strip.bad { border-color: var(--bad); }
+  /* heel and toe: a long text gives way to the other one; a text as the pedal shows it ("Rock", not "ROCK") */
+  .link-strip button.end-number { flex: 0 1 auto; min-width: 28px; height: 18px; padding: 0 3px; border-radius: 2px; font-size: 12px;
+      letter-spacing: 0; text-transform: none; white-space: nowrap;
+      text-align: center; font-variant-numeric: tabular-nums; background: none; border: 0; border-bottom: 1px dotted var(--line);
+      box-shadow: none; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+  .link-strip button.end-number:hover { background: rgba(243, 240, 230, .08); }
+  .end-field { width: 36px; height: 18px; padding: 0; border: 1px solid var(--accent); border-radius: 2px; background: var(--soft);
+               color: var(--ink); font-size: 12px; text-align: center; outline: none; }
+  .end-field.wide { width: 60px; }                   /* a knob with texts: "1/4×16" is typed */
+  .fx-knobs .link-strip select.end-field { flex: 0 1 auto; width: auto; min-width: 0; max-width: 100px; margin: 0; padding: 0 2px;
+                                           font-size: 12px; text-align: left; }      /* a few texts: chosen */
+  .end-arrow { font-size: 11px; color: var(--muted); width: 10px; text-align: center; }
+  .link-strip button.strip-icon { min-width: 0; width: 20px; height: 18px; padding: 0; display: grid; place-items: center; border-radius: 2px;
+      background: none; border: 1px solid transparent; box-shadow: none; color: var(--muted); font-size: 13px; }
+  .link-strip button.strip-icon:hover { border-color: var(--line); }
+  .link-strip button.strip-icon.on { color: var(--accent); border-color: rgba(238, 122, 36, .45); background: rgba(238, 122, 36, .12); }
+  .fx-knobs button.strip-remove { min-width: 0; margin-left: auto; width: 16px; height: 18px; padding: 0; display: grid; place-items: center;
+      background: none; border: 0; box-shadow: none; color: var(--bad); }
+  @container (max-width: 520px) {     /* narrow: the strip of a link goes under its slider, bigger for a finger */
+    .fx-knobs .editor-knob { grid-template-columns: 28px 46px minmax(0, 1fr) 10ch; }
+    .fx-knobs button.link-icon { width: 28px; height: 28px; }
+    .fx-knobs button.link-icon svg { width: 16px; height: 16px; }
+    .fx-knobs .link-strip { grid-column: 2 / -1; grid-row: 2; margin: 1px 0 6px; }
+    .fx-knobs .link-strip { height: 36px; gap: 6px; padding: 0 6px; }
+    .fx-knobs .link-strip button.end-number { min-width: 40px; height: 28px; padding: 0 5px; font-size: 15px; }
+    .fx-knobs .link-strip .end-field { height: 28px; font-size: 15px; }
+    .fx-knobs .link-strip .end-field:not(select) { width: 52px; }
+    .fx-knobs .link-strip .end-field.wide { width: 80px; }
+    .fx-knobs .link-strip .end-arrow { font-size: 14px; width: 14px; }
+    .fx-knobs .link-strip button.strip-icon { width: 34px; height: 28px; font-size: 17px; }
+    .fx-knobs .link-strip button.strip-icon svg { width: 18px; height: 18px; }
+    .fx-knobs .link-strip button.strip-remove { width: 30px; height: 28px; }
+    .fx-knobs .link-strip button.strip-remove svg { width: 12px; height: 12px; }
+    .knob-hint { margin-left: 0; }
+  }
+  .knob.fx button.opener { min-width: 0; padding: 0 5px; background: none; border: 0; box-shadow: none;
+                           color: var(--muted); font-size: 13px; line-height: 1; }
+  .knob.fx button.opener:hover { color: var(--ink); }
+  /* the lamp of an effect: green on, red off, as the one beside "Ready" */
+  /* what switches an effect: Learn, or its controller with an x */
+  .knob.fx .fx-switch { display: inline-flex; align-items: center; gap: 5px; flex: 1 1 auto; min-width: 0; }
+  .knob.fx .fx-switch select { height: 22px; font-size: 11px; padding: 0 4px; }
+  .knob.fx b.switch-cc { min-width: 0; display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 2px;
+      font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--blue);
+      border: 1px solid rgba(106, 169, 223, .45); background: rgba(106, 169, 223, .08); }
+  .knob.fx button.switch-remove { min-width: 0; width: 18px; height: 20px; padding: 0; display: grid; place-items: center;
+      background: none; border: 0; box-shadow: none; color: var(--bad); }
+  .knob.fx button.lamp { min-width: 0; width: 14px; height: 14px; padding: 0; border-radius: 50%; flex: none;
+                         border: 1px solid #000; background: #3a3633; box-shadow: none; }
+  .knob.fx button.lamp.on { background: radial-gradient(circle at 35% 35%, #dcffd6, var(--ok) 55%, #14772b);
+                            box-shadow: 0 0 10px rgba(67, 209, 95, .85); }
+  .knob.fx button.lamp.off { background: radial-gradient(circle at 35% 35%, #ffd9c7, var(--lamp) 55%, #a81c08);
+                             box-shadow: 0 0 8px rgba(255, 84, 51, .7); }
+  .knob.fx button.lamp:disabled { opacity: .5; }
+  .editor-effect h4 { margin: 0 0 4px; font-size: 13px; }
+  .editor-effect h4 small { color: var(--muted); font-weight: 400; margin-right: 6px; }
+  .editor-knob { display: grid; grid-template-columns: 52px minmax(0, 1fr) 10ch; align-items: center; gap: 6px;
+                 font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink);
+                 min-height: 24px; }
+  .editor-knob .knob-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .editor-knob output { text-align: right; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis;
+                        white-space: nowrap; }
+  .editor-knob input[type=range] { width: 100%; margin: 0; padding: 0; border: 0; background: none;
+                                   accent-color: var(--accent); }
+  .editor-knob input[type=range]:disabled { accent-color: #6f6a60; }   /* a Key, played by the keys; no pedal */
+  .knob.fx.drop-target { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  body.dragging-effect, body.dragging-effect * { cursor: grabbing !important; user-select: none; }
+  .knob.fx span:not(.fx-knobs span, .link-chips span) { flex: 1 1 70px; }
+  .knob.fx select { width: auto; margin: 0; padding: 3px 4px; font-size: 12px; }
+  .knob.fx button.state { min-width: 44px; }
+  .knob.fx button.chip { padding: 3px 7px; font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none;
+                         color: var(--ink); background: var(--card); box-shadow: none; border-color: var(--line); }
+  .knob.fx button.chip.away { color: var(--muted); border-style: dashed; }
+  .knob.fx .chips { display: flex; flex-wrap: wrap; gap: 5px; flex: 1 1 160px; }
+  .knob.fx.capturing { border-color: var(--blue); }
+  /* what a scene being captured takes so far: blue, as its row */
+  .knob.fx .chips span.chip.taken { flex: none; padding: 3px 7px; font-size: 11px; border: 1px solid var(--blue);
+                                    border-radius: 3px; color: var(--blue); }
+  .knob.fx .chips span.chip.taken.none { border-style: dashed; color: var(--muted); border-color: var(--line); }
+  /* a name changed in place, the preset's or a scene's: a click on it opens a field in its place */
+  button.name-button { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit;
+                       letter-spacing: inherit; text-transform: inherit; text-align: left; color: var(--ink);
+                       background: none; border: 0; border-bottom: 1px dashed transparent; border-radius: 0;
+                       box-shadow: none; padding: 0; cursor: text; }
+  button.name-button:hover:not(:disabled) { border-bottom-color: var(--muted); }
+  button.name-button:active:not(:disabled) { transform: none; box-shadow: none; }
+  button.name-button:disabled { opacity: 1; cursor: default; }
+  .knob.fx button.scene-name { min-width: 92px; font-size: 13px; letter-spacing: .02em; text-transform: none; }
+  form.in-place { display: flex; flex: 1 1 12ch; min-width: 0; margin: 0; }
+  /* 16px: smaller, and a phone zooms in on it */
+  form.in-place input { flex: 0 1 30ch; min-width: 0; margin: 0; padding: 1px 6px; font-size: 16px; font-weight: 700;
+                        letter-spacing: .04em; }
+  .part-head { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  /* which MIDI port each device is */
+  .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr)); gap: 6px 10px; }
+  #message { position: sticky; top: 8px; z-index: 2; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px;
+             background: #2b2926; border: 1px solid var(--line); }
+  #message.error { border-color: var(--bad); color: var(--bad); }
+  #log { margin: 0; font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--muted); white-space: pre-wrap; }
+  [hidden] { display: none !important; }
+  @media (max-width: 620px) {
+    #effectRows { grid-template-columns: minmax(0, 1fr); }
+    main { margin: 8px; padding: 10px 8px 2px; }
+    h1 { font-size: 16px; letter-spacing: .12em; }
+    .target { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-left: 10px; }
+    .adder { grid-template-columns: minmax(0, 1fr); }
+    .adder button { justify-self: start; }
+    .f-name, .f-curve, .note, .f-controller { grid-column: 1 / -1; }
+    .f-learn { grid-column: 1; }
+    .f-heel, .f-swap, .f-drop { grid-column: 1; }
+    .f-toe { grid-column: 2; }
+    details.panel > summary .sum { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">MS Plus Bridge</h1>
+    <span class="status"><i class="dot" id="dot"></i><span id="status">Connecting…</span></span>
+  </header>
+
+  <div id="message" hidden></div>
+
+  <details class="panel" id="devices" data-panel="devices" hidden>
+    <summary><h2>Devices</h2><span class="sum" id="devicesSum"></span></summary>
+    <div class="body">
+      <div class="device-grid">
+        <label>Pedal<select data-device="pedal"></select></label>
+        <label>Keyboard<select data-device="keyboard"></select></label>
+        <label>External sequencer<select data-device="external"></select></label>
+        <label>Foot controller<select data-device="expression"></select></label>
+      </div>
+      <div class="buttons" style="margin-top:8px">
+        <button type="button" id="exportButton">Export…</button>
+        <button type="button" id="importButton">Import…</button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+      </div>
+      <p class="readout" id="piWlan" style="margin-top:8px"></p>
+    </div>
+  </details>
+
+  <details class="panel" id="presetPanel" data-panel="preset" open>
+    <summary><h2>Preset</h2><span class="sum" id="presetSum"></span></summary>
+    <div class="body">
+      <div class="now">
+        <div class="name-line">
+          <button type="button" class="name-button" id="preset">–</button><button type="button" class="name-button" id="patchName"></button>
+          <button type="button" id="presetUndo" aria-label="Undo the last save" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button><button type="button" id="presetSave">Save</button>
+        </div>
+      </div>
+
+      <details class="part" id="effectsPart" data-panel="effects" open>
+        <summary><h3>Effects</h3><button type="button" id="effectAdd" aria-label="Add an effect" title="Adds an empty place at the end of the chain, for an effect to choose"><svg viewBox="0 0 12 12" width="14" height="14" aria-hidden="true"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button><span class="sum" id="effectsStatus"></span>
+          <span class="linked" id="linkedCount" title="Knobs of this preset set by the expression pedal or a controller"></span>
+          <span class="dsp" id="dsp" hidden><b>DSP</b><span class="dsp-bar" id="dspBar"></span><span id="dspReadout"></span></span>
+          <span class="pedal" title="The expression pedal's position, 0–127"><b>Pedal</b><span class="meter"><i id="bar"></i></span><span id="readout">–</span></span></summary>
+        <div class="part-body">
+          <div class="knobs" id="effectRows"></div>
+          <!-- assignments whose knob is not shown above: its effect is not in the chain now, or its knobs are not known -->
+          <div class="rows" id="rows"></div>
+          <div class="knobs one" id="everyPreset"></div>
+          <div class="part-head" style="justify-content: flex-start; margin-top: 6px; gap: 6px">
+            <button type="button" id="readPedal" title="Reads which effects are on the pedal; only those can then be chosen">Read Pedal</button>
+            <button type="button" class="learn-btn" id="learn" title="Turn a knob on the MS-60B+ once from one end to the other: it is assigned to the expression pedal with its exact range">Learn from pedal</button>
+          </div>
+          <div class="learn" id="learning" hidden>
+            <h3>Learn a parameter for preset <span id="learnPreset"></span></h3>
+            <ol>
+              <li>On the pedal, select the effect the expression pedal should control.</li>
+              <li>Turn the knob you want all the way down and all the way up, once.</li>
+              <li>Click “Apply”.</li>
+            </ol>
+            <p class="seen" id="seen">Waiting for a knob movement…</p>
+            <div class="buttons">
+              <button class="primary" id="learnStop">Apply</button>
+              <button id="learnCancel">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="part" id="scenesPart" data-panel="scenes" open>
+        <summary><h3>Scenes</h3><span class="sum" id="scenesStatus"></span></summary>
+        <div class="part-body">
+          <div class="part-head"><button type="button" id="sceneAdd">Add scene</button></div>
+          <div class="knobs one" id="sceneRows"></div>
+        </div>
+      </details>
+
+    </div>
+  </details>
+
+  <details class="panel" id="arpPanel" data-panel="arp" hidden>
+    <summary><h2>Arpeggiator</h2><span class="sum" id="arpStatus"></span></summary>
+    <div class="body">
+      <div class="arp-head">
+        <button type="button" id="arpOn" aria-pressed="false">Off</button>
+        <div class="knobs" id="arpSwitch"></div>
+      </div>
+      <div class="arp-grid">
+        <label>Mode<select data-arp="mode">
+          <option value="up">Up</option>
+          <option value="down">Down</option>
+          <option value="updown">Up and down</option>
+          <option value="played">As played</option>
+          <option value="random">Random</option>
+        </select></label>
+        <label>Rate<select data-arp="rate">
+          <option value="1/4">1/4</option>
+          <option value="1/8">1/8</option>
+          <option value="1/8T">1/8 triplet</option>
+          <option value="1/16">1/16</option>
+          <option value="1/16T">1/16 triplet</option>
+          <option value="1/32">1/32</option>
+        </select></label>
+        <label>Octaves<select data-arp="octaves">
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+        </select></label>
+        <label>Gate %<input data-arp="gate" type="number" min="5" max="100" step="5" inputmode="numeric"></label>
+        <label>Clock<select data-arp="clock">
+          <option value="internal">Tempo</option>
+          <option value="midi">MIDI clock</option>
+        </select></label>
+        <label>Tempo BPM<input data-arp="tempo" type="number" min="40" max="300" step="1" inputmode="decimal"></label>
+        <label class="check"><input data-arp="latch" type="checkbox">Latch</label>
+      </div>
+    </div>
+  </details>
+
+  <details class="panel" id="seqPanel" data-panel="seq" hidden>
+    <summary><h2>Step sequencer</h2><span class="sum" id="seqStatus"></span></summary>
+    <div class="body">
+      <div class="arp-head">
+        <button type="button" id="seqOn" aria-pressed="false">Off</button>
+        <div class="knobs" id="seqSwitch"></div>
+      </div>
+      <div class="seq-row">
+        <label>Pattern<input id="seqPattern" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="C3 E3 - G3 _"></label>
+        <button type="button" class="learn-btn" id="seqRecord">Record</button>
+        <button type="button" id="seqRest" hidden>Rest</button>
+        <button type="button" id="seqTie" hidden>Tie</button>
+        <button type="button" id="seqBack" hidden>Back</button>
+        <button type="button" id="seqCancel" hidden>Cancel</button>
+      </div>
+    </div>
+  </details>
+
+  <details class="panel" id="activityPanel" data-panel="activity">
+    <summary><h2>Activity</h2><span class="sum" id="totals"></span></summary>
+    <div class="body">
+      <p class="readout" id="synthStatus" style="margin-bottom:6px" hidden></p>
+      <pre id="log"></pre>
+    </div>
+  </details>
+</main>
+
+<template id="targetTemplate">
+  <details class="row">
+    <summary><b></b><span class="sum"></span></summary>
+    <div class="target">
+      <label class="f-controller">Controlled by<select data-field="controller"></select></label>
+      <button type="button" class="f-learn learn-btn" data-action="learn">Learn controller</button>
+      <label class="f-heel"><span data-text="heel">Heel</span><input data-field="heel" type="number" inputmode="numeric" required></label>
+      <label class="f-toe"><span data-text="toe">Toe</span><input data-field="toe" type="number" inputmode="numeric" required></label>
+      <button type="button" class="f-swap" data-action="swap" title="Swap heel and toe">⇅ Invert</button>
+      <label class="f-curve">Curve<select data-field="curve">
+        <option value="linear">Linear</option>
+        <option value="log">Changes early</option>
+        <option value="exp">Changes late</option>
+      </select></label>
+      <label class="f-name">Name<input data-field="name" maxlength="40" placeholder="e.g. Hold"></label>
+      <button type="button" class="f-drop" data-action="drop">Remove</button>
+      <p class="note"></p>
+    </div>
+  </details>
+</template>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const same = (a, b) => a.slot === b.slot && a.param === b.param;
+const DEFAULT_RANGE = {min: 0, max: 100};     // suggested for a parameter whose range is not known
+// Shown: the value at heel and toe (a knob: at 0 and at full). Stored: min, max and whether inverted.
+// cc: the controller, null for the expression pedal.
+// effect: the id of the effect it was made for, as the bridge keeps it (it goes with the effect when that moves)
+const toView = (t) => ({slot: t.slot, param: t.param, name: t.name, curve: t.curve, cc: t.cc == null ? null : t.cc,
+                        heel: t.invert ? t.max : t.min, toe: t.invert ? t.min : t.max, effect: t.effect || null});
+const toWire = (v) => ({slot: v.slot, param: v.param, name: v.name, curve: v.curve, cc: v.cc, effect: v.effect,
+                        min: Math.min(v.heel, v.toe), max: Math.max(v.heel, v.toe), invert: v.heel > v.toe});
+const controllerName = (cc) => cc == null ? "Expression pedal" : cc === 1 ? "Mod wheel" : `CC ${cc}`;
+
+let state = null;
+let messageTimer = null;
+let rowSignature = "";    // what the rows of the expression pedal were last built from
+const openRows = new Set();   // the rows opened, "slot/param", so that a redraw keeps them open
+let knobSignature = "";   // what the rows of the synth knobs from before were last built from
+let deviceSignature = ""; // what the lists of ports were last built from
+let effectSignature = ""; // what the rows of the effect switches were last built from
+let sceneSignature = "";  // what the rows of the scenes were last built from
+let dspSignature = "";    // what the parts of the DSP bar were last made from
+let seqDraft = false;     // the pattern field holds text that is not stored (yet, or because it was refused)
+const ARP_NUMBERS = ["octaves", "gate", "tempo"];
+const ANY_PORT = "*";     // the keyboard: whichever device is none of the others
+
+const learnedFor = (key) => state.learned[key] || [];
+const chainEffect = (slot) => (state.chain_effects || [])[slot] || null;
+// The effects of the chain as the rows are built from them: without what their knobs hold now,
+// which changes all the time (only the editor reads it), so that a row is not rebuilt for that
+const chainShape = () => state.chain_effects
+  ? state.chain_effects.map((effect) => [effect.slot, effect.id, effect.name, effect.empty, effect.knobs, effect.keys])
+  : null;
+// An effect by its place: its name on the pedal, or its number while the name is not known
+const effectName = (slot) => {
+  const effect = chainEffect(slot);
+  return effect && effect.name ? effect.name : effect && effect.empty ? "Empty" : `Effect ${slot + 1}`;
+};
+const knobOf = (slot, param) => {
+  const effect = chainEffect(slot);
+  return effect ? effect.knobs.find((knob) => knob.param === param) || null : null;
+};
+// A parameter: "AnalogDly · Mix", or "Effect 2 · Parameter 4" while its names are not known
+const label = (choice) => {
+  const effect = chainEffect(choice.slot), knob = knobOf(choice.slot, choice.param);
+  return effect && effect.name && knob ? `${effect.name} · ${knob.name}`
+    : `${effectName(choice.slot)} · Parameter ${choice.param - 1}`;
+};
+// Its range: learned on the pedal, else from the effect's table, else 0–100
+const rangeOf = (key, choice) => {
+  const learned = learnedFor(key).find((entry) => same(entry, choice));
+  if (learned) return {min: learned.min, max: learned.max, learned: true};
+  const knob = knobOf(choice.slot, choice.param);
+  return knob ? {min: 0, max: knob.max, learned: false} : {...DEFAULT_RANGE, learned: false, unknown: true};
+};
+
+// --- The values of a knob as the pedal shows them ("Rock", "1/8.", "1.0kHz"), from the table of
+// effects: asked for once per effect of the chain that has such knobs ("text"); numbers until they
+// are there. What is stored stays the number. ---
+
+const valueLabels = new Map();  // effect id → {param: [the text of each value 0..highest]}
+const labelsAsked = new Set();  // the effect ids whose texts are on their way
+let labelsVersion = null;       // the version of the table they are from (state.effects.labels_version)
+let labelsRound = 0;            // counts the times they were forgotten: an answer asked for before is dropped
+const LABELS_AGAIN = 3000;      // ms: texts refused (the bridge busy, as with Read Pedal) are asked for again after it
+
+function forgetLabels() {
+  valueLabels.clear();
+  labelsAsked.clear();
+  labelsRound += 1;
+  sceneSignature = rowSignature = "";          // shown anew (the effects' rows see the version themselves)
+}
+
+// After a poll: the texts of the effects of the chain that are not here yet, all anew once the
+// table or what was read from the pedal has changed
+function askLabels() {
+  if (state.effects.labels_version !== labelsVersion) {
+    labelsVersion = state.effects.labels_version;
+    forgetLabels();
+  }
+  const round = labelsRound;
+  for (const effect of state.chain_effects || []) {
+    if (valueLabels.has(effect.id) || labelsAsked.has(effect.id) || !effect.knobs.some((knob) => knob.text)) continue;
+    labelsAsked.add(effect.id);
+    fetch(`/api/labels?id=${effect.id}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (round !== labelsRound) return;
+        if (!data) {                           // refused (a Read Pedal holds the bridge): numbers meanwhile
+          setTimeout(() => { if (round === labelsRound) labelsAsked.delete(effect.id); }, LABELS_AGAIN);
+          return;
+        }
+        labelsAsked.delete(effect.id);
+        valueLabels.set(effect.id, data.labels || {});
+        effectSignature = sceneSignature = rowSignature = "";      // shown with them
+        if (!state.unavailable) { renderLive(); renderExpression(false); }
+      })
+      .catch(() => { if (round === labelsRound) labelsAsked.delete(effect.id); });   // asked again after the next poll
+  }
+}
+
+// The texts of a knob's values; null while they are not known, or if the pedal shows the number
+const labelsOf = (effectId, param) => (valueLabels.get(effectId) || {})[param] || null;
+// The pedal's note characters 0x16 (1/32) to 0x1A (1/2) written out: "1/8." dotted, "1/8T" a
+// triplet (the pedal: three in the time of a quarter, "<quarter> 3"), "1/4×2" two quarters
+const noteText = (text) => text.replace(/([\u0016-\u001a])( 3(?!\d)|x(?=\d))?/g, (all, note, after) => {
+  const length = 2 ** (0x1b - note.charCodeAt(0));          // 2 for a half note, 32 for a 1/32
+  return after === " 3" ? `1/${2 * length}T` : `1/${length}` + (after ? "×" : "");
+});
+// A value of a knob as the pedal shows it, the number if it has no texts (or they are not here yet)
+function valueText(effectId, param, value) {
+  const texts = labelsOf(effectId, param), step = Number(value);
+  return texts && Number.isInteger(step) && step >= 0 && step < texts.length ? noteText(texts[step]) : String(value);
+}
+// ... of a knob of the effect in a place of the chain now
+const knobText = (slot, param, value) => valueText((chainEffect(slot) || {}).id, param, value);
+// ... of an assignment: by the effect it was made for (also while that is not in the chain), else
+// by the one in its place
+const targetText = (target, value) => valueText(target.effect || (chainEffect(target.slot) || {}).id,
+                                                target.param, value);
+// Heel or toe typed for a knob with texts: a text as the pedal shows it ("rock", "1/8.", "1/4x2"),
+// a text that is the same number ("-3" for "-3.0"; DrumBox's Tempo "120" is the text 120, not the
+// step), or "#5" for the step itself. The step it is (the current one if that fits), NaN if none.
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)$/;
+function typedStep(texts, typed, current) {
+  const plain = (text) => noteText(text).trim().toLowerCase().replace(/×/g, "x");
+  const wanted = plain(typed);
+  const first = (fits) => texts[current] != null && fits(plain(texts[current])) ? current
+    : texts.findIndex((text) => fits(plain(text)));
+  let step = first((text) => text === wanted);
+  if (step < 0 && DECIMAL.test(wanted)) step = first((text) => DECIMAL.test(text) && Number(text) === Number(wanted));
+  const raw = /^#\s*(\d+)$/.exec(wanted);
+  if (step < 0 && raw) step = Number(raw[1]);
+  return step < 0 ? NaN : step;
+}
+
+function showMessage(text, isError) {
+  const box = $("message");
+  box.textContent = text;
+  box.className = isError ? "error" : "";
+  box.hidden = false;
+  clearTimeout(messageTimer);
+  messageTimer = setTimeout(() => { box.hidden = true; }, isError ? 8000 : 3500);
+}
+
+async function post(path, body) {
+  try {
+    const response = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"},
+                                        body: JSON.stringify(body)});
+    const data = await response.json();
+    if (data.error) { showMessage(data.error, true); await poll(); return null; }
+    await poll();
+    return data;
+  } catch (error) {
+    showMessage("The bridge is not reachable.", true);
+    return null;
+  }
+}
+
+async function download(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) { showMessage((await response.json()).error || "Export failed.", true); return; }
+    const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(await response.blob());
+    link.download = name ? name[1] : "ms-plus-bridge.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  } catch (error) {
+    showMessage("The bridge is not reachable.", true);
+  }
+}
+
+async function poll() {
+  try {
+    state = await (await fetch("/api/state")).json();
+  } catch (error) {
+    $("dot").classList.remove("on");
+    $("status").textContent = "The bridge is not running.";
+    labelsVersion = null;                  // another bridge may come back: its texts are asked for anew
+    return;
+  }
+  if (state.unavailable) {                 // a bridge without screen in safe mode: only why, and its log
+    $("dot").classList.remove("on");
+    $("status").textContent = state.unavailable;
+    $("log").textContent = state.events.join("\n");
+    renderUnavailable();
+    return;
+  }
+  askLabels();
+  renderLive();
+  renderDevices();
+  renderExpression(false);
+}
+
+// Safe mode: nothing of the bridge that was there stays to be clicked; what the panels show is
+// built anew once a bridge is back (renderLive, renderDevices and renderSynth show them again)
+function renderUnavailable() {
+  for (const id of ["presetPanel", "arpPanel", "seqPanel", "devices"]) $(id).hidden = true;
+  if (renaming) {
+    renaming.close();
+    renaming = null;
+  }
+  awaitingName = awaitingEffect = false;
+  movedGrip = null;
+  labelsVersion = null;                    // the texts of the effects are asked for anew
+  rowSignature = knobSignature = deviceSignature = effectSignature = sceneSignature = "";
+  for (const known of editorSliders.values()) known.drop();      // nothing more from a slider held
+  editorSliders.clear();
+}
+
+function renderLive() {
+  $("presetPanel").hidden = false;
+  const title = "MS Plus Bridge" + (state.profile ? ` · ${state.profile}` : "");   // a second bridge says which it is
+  if (document.title !== title) { document.title = title; $("title").textContent = title; }
+  $("dot").classList.toggle("on", state.connected);
+  $("status").textContent = state.status || "";
+  $("preset").textContent = state.patch ? state.patch.display : "–";
+  $("patchName").textContent = state.patch ? state.patch.name || "" : "No preset reported";
+  renderRename();
+  renderPresets();
+  const scene = state.scenes.active == null ? null : state.scenes.list[state.scenes.active];
+  $("presetSum").textContent = !state.patch ? "No preset reported"
+    : `${state.patch.display}${state.patch.name ? " · " + state.patch.name : ""}`
+      + (scene ? `  ·  scene “${scene.name}”` : "");
+  $("bar").style.width = state.pedal == null ? "0" : `${(state.pedal / 127) * 100}%`;
+  $("readout").textContent = state.pedal == null ? "–" : String(state.pedal);
+
+  const learning = state.learning !== null;
+  $("learning").hidden = !learning;
+  // not while a scene is captured: the bridge takes the knobs turned on the pedal for that
+  $("learn").disabled = learning || !state.connected || !state.patch || state.scenes.capturing != null;
+  if (learning) {
+    $("learnPreset").textContent = state.patch ? state.patch.display : "";
+    const best = state.learning.slice().sort((a, b) => b.count - a.count)[0];
+    $("seen").textContent = best
+      ? `Detected: ${label(best)}, values ${knobText(best.slot, best.param, best.min)}–`
+        + `${knobText(best.slot, best.param, best.max)} (${best.count} messages)`
+      : "Waiting for a knob movement…";
+    $("learnStop").disabled = !best;
+  }
+
+  renderSynth();
+  renderScenes();
+  renderEffects();
+  syncEditorValues();
+
+  const totals = state.totals;
+  $("totals").textContent = totals
+    ? `${totals.sent} sent · ${totals.acked} confirmed · ${totals.missed} unconfirmed`
+      + (state.latency_ms == null ? "" : ` · latency ${state.latency_ms} ms`)
+    : "";
+  $("log").textContent = state.events.join("\n");
+}
+
+// Which MIDI port each device is: the ports there are, the one chosen (also while it is not
+// connected), “None” for the devices that are optional, and “Any keyboard”
+function renderDevices() {
+  const devices = state.devices;
+  $("devices").hidden = !devices;
+  if (!devices) return;
+  $("devicesSum").textContent = Object.values(devices).filter((device) => device && (device.port || device.name))
+    .map((device) => device.port || (device.name === ANY_PORT ? "any keyboard (none connected)"
+      : `${device.name} (not connected)`)).join("  ·  ");
+  $("piWlan").textContent = state.pi_wlan
+    ? `The Pi’s own WLAN: “${state.pi_wlan.wlan_name}”, password ${state.pi_wlan.wlan_password}` : "";
+  const choosing = document.activeElement && document.activeElement.matches("[data-device]");
+  const signature = JSON.stringify(devices);
+  if (signature === deviceSignature || choosing) return;     // an open list is left alone
+  deviceSignature = signature;
+  for (const select of document.querySelectorAll("[data-device]")) {
+    const device = devices[select.dataset.device];
+    select.parentElement.hidden = !device;                   // no keyboard without a synth section in config.yaml
+    if (!device) continue;
+    const current = device.name === ANY_PORT ? ANY_PORT : device.port || device.name;
+    const options = select.dataset.device === "pedal" ? [] : [["", "None"]];
+    if (select.dataset.device === "keyboard") {
+      options.push([ANY_PORT, device.name === ANY_PORT && device.port ? `Any keyboard (now ${device.port})` : "Any keyboard"]);
+    }
+    if (current && current !== ANY_PORT && !device.choices.includes(current)) options.push([current, `${current} (not connected)`]);
+    for (const name of device.choices) options.push([name, name]);
+    select.replaceChildren(...options.map(([value, text]) => new Option(text, value)));
+    select.value = current;
+  }
+}
+
+// --- Names changed in place ---
+
+// A click on a name (shown, a button) opens a field in its place. Enter (on a phone: Done) or a
+// click elsewhere keeps the new name, Escape the old one; an unchanged name is not sent. check
+// returns why a name cannot be taken ("" if it can). Returns a function that closes the field.
+function editInPlace(shown, {value, maxLength, label, check, save}) {
+  const form = document.createElement("form");
+  form.className = "in-place";
+  const input = document.createElement("input");
+  Object.assign(input, {value, maxLength, spellcheck: false, autocomplete: "off", enterKeyHint: "done"});
+  input.setAttribute("aria-label", label);
+  form.append(input);
+  shown.hidden = true;
+  shown.after(form);
+  input.focus();
+  input.select();
+  let open = true;
+  const close = () => {
+    if (!open) return false;
+    open = false;
+    form.remove();
+    shown.hidden = false;
+    return true;
+  };
+  const keep = () => {                    // false: the name cannot be taken, the field stays open
+    const name = input.value.trim();
+    const changed = name !== "" && name !== value;
+    const problem = changed ? check(name) : "";
+    if (problem) {
+      showMessage(problem, true);
+      return false;
+    }
+    if (close() && changed) save(name);
+    return true;
+  };
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (keep()) shown.focus({preventScroll: true});
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      close();
+      shown.focus({preventScroll: true});
+    }
+  });
+  input.addEventListener("blur", () => { if (open && !keep()) close(); });
+  return close;
+}
+
+// The preset on the pedal: its name as the pedal takes it
+const NAME_CHARACTER = /[A-Za-z0-9 !#$%&'()+,\-.;=@[\]^_`{}~]/;
+const presetNameProblem = (name) => {
+  const wrong = [...new Set([...name].filter((character) => !NAME_CHARACTER.test(character)))];
+  return wrong.length ? `Not possible in a name: ${wrong.join(" ")} – letters, digits, spaces and `
+    + "! # $ % & ' ( ) + , - . ; = @ [ ] ^ _ ` { } ~ are." : "";
+};
+let renaming = null;     // the preset whose name is being changed, and how to close its field
+let awaitingName = false;
+$("patchName").addEventListener("click", () => {
+  if (!state.patch) return;
+  const key = state.patch.key;
+  renaming = {key, close: editInPlace($("patchName"), {
+    value: state.patch.name || "", maxLength: 28, label: "New name of the preset", check: presetNameProblem,
+    save: async (name) => {
+      if (!state.patch || state.patch.key !== key) return;
+      if (await post("/api/rename", {name})) awaitingName = true;   // the bridge reads the patch back: its answer comes later
+    }})};
+});
+function renderRename() {
+  if (renaming && (!state.patch || state.patch.key !== renaming.key)) {   // another preset now
+    renaming.close();
+    renaming = null;
+  }
+  if (awaitingName && !state.rename.busy) {
+    awaitingName = false;
+    if (state.rename.result) showMessage(state.rename.result.text, !state.rename.result.ok);
+  }
+  const name = $("patchName");
+  name.disabled = !state.connected || !state.patch || !state.rename.approved || state.rename.busy;
+  name.title = !state.patch ? "" : state.rename.approved ? "Click to rename the preset on the pedal"
+    : "Renaming is not approved: python probe.py approve rename_patch query_patch";
+}
+
+// The presets of the pedal: a click on the number lists them (with their names once the bridge
+// has read them) to choose one, which the pedal loads as stored; "Save" stores the preset on the
+// pedal into its own place or, after asking, into another one
+let awaitingPreset = false;
+function openPresetList(button, label, placeholder, chosen) {
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", label);
+  if (placeholder) select.append(new Option(placeholder, "", true, true));
+  for (const preset of state.presets.list) {
+    const here = state.patch && state.patch.key === `${preset.bank}/${preset.program}`;
+    select.append(new Option(`${preset.display}  ${preset.name || ""}${placeholder && here ? "  (here)" : ""}`,
+                             `${preset.bank}/${preset.program}`));
+  }
+  if (!placeholder && state.patch) select.value = state.patch.key;
+  button.hidden = true;
+  button.after(select);
+  select.focus();
+  try { select.showPicker(); } catch (error) { /* older browsers: the list opens with a click */ }
+  let open = true;
+  const close = () => {
+    if (!open) return;
+    open = false;
+    select.remove();
+    button.hidden = false;
+  };
+  select.addEventListener("change", async () => {
+    const value = select.value;
+    close();
+    if (value) await chosen(...value.split("/").map(Number));
+  });
+  select.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      close();
+      button.focus({preventScroll: true});
+    }
+  });
+  select.addEventListener("blur", close);
+}
+$("preset").addEventListener("click", () => {
+  if (!state.presets.select) { showMessage($("preset").title, true); return; }    // no tooltip on a phone
+  openPresetList($("preset"), "Preset to choose", null,
+                 (bank, program) => post("/api/preset", {action: "select", bank, program}));
+});
+$("presetSave").addEventListener("click", () => !state.presets.save ? showMessage($("presetSave").title, true)
+  : openPresetList($("presetSave"), "Place to save the preset into", "Save into…", async (bank, program) => {
+    const target = state.presets.list.find((preset) => preset.bank === bank && preset.program === program);
+    if (!state.patch || !target) return;
+    if (state.patch.key !== `${bank}/${program}` && !confirm(`Preset ${target.display}`
+        + (target.name ? ` “${target.name}”` : "") + " on the pedal is replaced by this one, and what the bridge "
+        + "keeps for it (parameters, scenes) too. Save?")) return;
+    if (await post("/api/preset", {action: "save", bank, program})) awaitingPreset = true;   // read back: later
+  }));
+$("presetUndo").addEventListener("click", async () => {
+  if (await post("/api/preset", {action: "undo"})) awaitingPreset = true;
+});
+function renderPresets() {
+  const presets = state.presets;
+  if (!presets) return;
+  const undo = $("presetUndo");
+  undo.hidden = !presets.undo;
+  undo.disabled = !state.connected || presets.busy;
+  if (presets.undo) undo.title = `Undo the last save: preset ${presets.undo.display}`
+    + (presets.undo.name ? ` “${presets.undo.name}”` : "") + " is written back as it was";
+  if (awaitingPreset && !presets.busy) {
+    awaitingPreset = false;
+    if (presets.result) showMessage(presets.result.text, !presets.result.ok);
+  }
+  const number = $("preset");
+  number.disabled = !state.connected || presets.busy;              // not approved: a click says so
+  number.title = !presets.select ? "Choosing presets is not approved: python probe.py approve select_preset"
+    : "Click to choose another preset" + (presets.reading ? " (their names are being read)" : "");
+  const save = $("presetSave");
+  save.disabled = !state.connected || !state.patch || presets.busy;
+  save.classList.toggle("locked", !presets.save);
+  save.title = !presets.save ? "Saving presets is not approved: python probe.py approve save_preset query_preset query_patch"
+    : "Save the preset on the pedal into its place, or into another one";
+}
+
+// --- Parameters: what the expression pedal and the knobs of the controllers set in this preset ---
+
+const currentKey = () => state.patch && state.patch.key;
+const savedTargets = () => {
+  const mapping = state.mappings.find((m) => m.key === currentKey());
+  return mapping ? mapping.targets.map(toView) : [];
+};
+// The parameter waiting for its controller to be moved, in this preset
+const waitingFor = (choice) => !!state.param_learning && same(state.param_learning, choice);
+
+// What was made for one preset goes to that one: is another on the pedal by now (a field, list or
+// handle kept open meanwhile), nothing goes out, and that is said
+function samePreset(key) {
+  if (key === currentKey()) return true;
+  showMessage("Another preset is on the pedal now – nothing was changed.", true);
+  return false;
+}
+
+async function storeTargets(key, targets) {
+  if (!key || !samePreset(key)) return null;
+  return targets.length ? post("/api/mapping", {key, targets: targets.map(toWire)}) : post("/api/delete", {key});
+}
+
+function renderExpression(force) {
+  if (!state || state.unavailable) return;
+  const key = currentKey();
+  const targets = key ? savedTargets() : [];
+  const live = state.targets;
+
+  // the live values change all the time: they are written into the rows, which stay
+  for (const row of $("rows").children) {
+    const index = Number(row.dataset.index);
+    const value = live[index] || {};
+    const sum = row.querySelector("summary .sum");
+    const target = targets[index];
+    if (!sum || !target) continue;
+    sum.textContent = waitingFor(target) ? "Move a knob, slider or pedal…"
+      : value.away ? `${controllerName(target.cc)}  ·  not in this preset now – nothing is sent`
+      : `${controllerName(target.cc)}  ·  ${targetText(target, target.heel)} → ${targetText(target, target.toe)}`
+        + (value.value == null ? "" : `  ·  now ${targetText(target, value.value)}`)
+        + (value.stopped ? "  ·  stopped: the pedal does not accept it"
+           : value.unconfirmed ? "  ·  not confirmed by the pedal" : "");
+    row.classList.toggle("bad", !!(value.stopped || value.unconfirmed || value.away));
+  }
+
+  const signature = JSON.stringify([key, targets, state.learned[key], chainShape(), state.connected,
+                                    state.param_learning, state.learning !== null, state.scenes.capturing]);
+  const active = document.activeElement;
+  const typing = $("rows").contains(active) && /^(INPUT|SELECT)$/.test(active.tagName);
+  if (!force && (signature === rowSignature || typing)) return;
+  if (rowSignature && JSON.parse(rowSignature)[0] !== key) openRows.clear();   // another preset
+  rowSignature = signature;
+  // only those the effects above do not show: their effect is not in the chain now, or its knobs
+  // are not known (another build, or an effect the table does not have)
+  $("rows").replaceChildren(...targets.flatMap((target, index) => shownInEffects(target, index) ? []
+    : [buildTarget(key, targets, index)]));
+}
+
+function buildTarget(key, targets, index) {
+  const target = targets[index];
+  const row = $("targetTemplate").content.firstElementChild.cloneNode(true);
+  row.dataset.index = index;
+  const id = `${target.slot}/${target.param}`;
+  const field = (name) => row.querySelector(`[data-field=${name}]`);
+  const waiting = waitingFor(target);
+  row.open = openRows.has(id);
+  row.classList.toggle("waiting", waiting);
+  row.addEventListener("toggle", () => { if (row.open) openRows.add(id); else openRows.delete(id); });
+  // its effect is not in the chain now: called by that effect's name, not by what is in its place
+  const away = (state.targets[index] || {}).away;
+  row.querySelector("summary b").textContent = (away || label(target)) + (target.name ? `  “${target.name}”` : "");
+  row.querySelector("summary .sum").textContent = waiting ? "Move a knob, slider or pedal…"
+    : `${controllerName(target.cc)}  ·  ${targetText(target, target.heel)} → ${targetText(target, target.toe)}`;
+  const pedal = target.cc == null;
+  row.querySelector("[data-text=heel]").textContent = pedal ? "Heel" : "At 0";
+  row.querySelector("[data-text=toe]").textContent = pedal ? "Toe" : "At 127";
+  // the controller: the expression pedal, or the one learned; another one is learned with the button
+  const controller = field("controller");
+  controller.append(new Option("Expression pedal", "pedal"));
+  if (!pedal) controller.append(new Option(controllerName(target.cc), String(target.cc)));
+  controller.value = pedal ? "pedal" : String(target.cc);
+  const learn = row.querySelector("[data-action=learn]");
+  learn.textContent = waiting ? "Cancel" : "Learn controller";
+  learn.className = "f-learn" + (waiting ? "" : " learn-btn");
+  learn.title = "Then move the knob, slider, wheel or pedal that should set it, on any controller";
+  // not while a knob of the pedal is being learned or a scene is captured: the bridge refuses then
+  learn.disabled = !waiting && (!state.connected || state.learning !== null || state.scenes.capturing != null);
+  const range = rangeOf(key, target);
+  field("name").value = target.name;
+  field("curve").value = target.curve;
+  for (const name of ["heel", "toe"]) {
+    field(name).value = target[name];
+    field(name).min = range.learned ? range.min : 0;
+    field(name).max = range.learned || !range.unknown ? range.max : state.limits.value;
+  }
+  const ends = `${targetText(target, range.min)}–${targetText(target, range.max)}`;
+  row.querySelector(".note").textContent =
+    (range.learned ? `Learned range ${ends}. `
+     : range.unknown ? "Range not known: enter the values yourself; the pedal ignores values it does not accept. "
+     : `Range ${ends}. `)
+    + (target.heel > target.toe ? `Inverted: the value drops as the ${pedal ? "pedal goes down" : "control goes up"}.` : "");
+
+  const store = async () => {
+    if (!await storeTargets(key, targets)) rowSignature = "";  // refused: back to what is kept
+    renderExpression(false);       // not the field tabbed into: the rows are built anew once it is left
+  };
+  controller.addEventListener("change", () => {
+    controller.blur();
+    if (controller.value === "pedal") { target.cc = null; store(); }
+  });
+  learn.addEventListener("click", () => post("/api/parameter",
+    waiting ? {action: "cancel"} : {action: "learn", slot: target.slot, param: target.param}));
+  field("name").addEventListener("change", (event) => { target.name = event.target.value; store(); });
+  field("curve").addEventListener("change", (event) => { target.curve = event.target.value; event.target.blur(); store(); });
+  for (const name of ["heel", "toe"]) {
+    field(name).addEventListener("change", (event) => { target[name] = Number(event.target.value); store(); });
+    field(name).addEventListener("keydown", (event) => { if (event.key === "Enter") event.target.blur(); });
+  }
+  row.querySelector("[data-action=swap]").addEventListener("click", () => {
+    [target.heel, target.toe] = [target.toe, target.heel];
+    store();
+  });
+  row.querySelector("[data-action=drop]").addEventListener("click", () => {
+    if (!confirm(`Take ${label(target)} away from ${controllerName(target.cc)}?`)) return;
+    targets.splice(index, 1);
+    openRows.delete(id);
+    store();
+  });
+  return row;
+}
+
+// The scenes of the preset on the pedal: recall, what each sets, its controller, capturing its values
+function renderScenes() {
+  const scenes = state.scenes;
+  $("sceneAdd").disabled = !state.connected || !state.patch || scenes.list.length >= scenes.max;
+  $("scenesStatus").textContent = scenes.capturing == null ? ""
+    : `Capturing “${scenes.list[scenes.capturing].name}” – turn the knobs on the pedal or here, switch effects `
+      + `(${scenes.seen} so far), then Apply`;
+  const signature = JSON.stringify([scenes.list, scenes.active, scenes.learning, scenes.capturing, scenes.captured,
+                                    state.connected, chainShape(), state.learning !== null]);
+  const typing = $("sceneRows").contains(document.activeElement) && document.activeElement.tagName === "INPUT";
+  if (signature === sceneSignature || typing) return;        // rebuilding on every poll would swallow clicks
+  sceneSignature = signature;
+  $("sceneRows").replaceChildren(...scenes.list.map((scene, index) => sceneRow(scene, index, scenes)));
+}
+
+const makeButton = (text, className, onClick) => {
+  const made = document.createElement("button");
+  made.type = "button";
+  made.className = className;
+  made.textContent = text;
+  made.addEventListener("click", onClick);
+  return made;
+};
+
+function sceneRow(scene, index, scenes) {
+  const key = currentKey();
+  const send = (action, more) => samePreset(key) ? post("/api/scenes", {action, index, ...more}) : null;
+  const waiting = scenes.learning === index;
+  const capturing = scenes.capturing === index;
+  const row = document.createElement("div");
+  row.className = "knob fx" + (waiting ? " waiting" : "") + (capturing ? " capturing" : "");
+  const name = makeButton(scene.name, "name-button scene-name", () => editInPlace(name, {
+    value: scene.name, maxLength: scenes.max_name, label: "New name of the scene", check: () => "",
+    save: (changed) => send("rename", {name: changed})}));
+  name.title = "Click to rename the scene";
+  name.disabled = !state.connected;
+  const recall = makeButton("Recall", scenes.active === index ? "state primary" : "state", () => send("recall"));
+  recall.title = scenes.active === index ? "Recalled last – recall it again" : "Recall the scene";
+  recall.disabled = !state.connected || scenes.capturing != null || state.learning !== null;
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  // while it is captured: what it takes so far (blue), in place of what it holds for the same knob or
+  // effect – only what is turned or switched from Capture on counts
+  const taken = capturing ? scenes.captured : {values: [], effects: []};
+  const takenKnobs = new Set(taken.values.map((value) => `${value.slot}/${value.param}`));
+  const takenEffects = new Set(taken.effects.map((effect) => effect.slot));
+  // a value or switch whose effect is not in the chain now: by that effect's name, dashed, not recalled
+  const awayNote = " – that effect is not in this preset now, so the scene leaves it";
+  for (const value of scene.values) {
+    if (takenKnobs.has(`${value.slot}/${value.param}`)) continue;
+    const shown = value.away ? value.value : knobText(value.slot, value.param, value.value);  // away: the number
+    const chip = makeButton(`${value.away || label(value)} → ${shown}`, value.away ? "chip away" : "chip",
+                            () => send("drop", {slot: value.slot, param: value.param}));
+    chip.title = "Take this value out of the scene" + (value.away ? awayNote : "");
+    chips.append(chip);
+  }
+  for (const effect of scene.effects) {
+    if (takenEffects.has(effect.slot)) continue;
+    const chip = makeButton(`${effect.away || effectName(effect.slot)} ${effect.on ? "on" : "off"}`,
+                            effect.away ? "chip away" : "chip", () => send("drop", {slot: effect.slot}));
+    chip.title = "Take this switch out of the scene" + (effect.away ? awayNote : "");
+    chips.append(chip);
+  }
+  const control = document.createElement("span");
+  control.textContent = waiting ? "Press a switch…" : scene.cc == null ? "no controller" : `CC ${scene.cc}`;
+  const takenChip = (text, title, none = false) => {
+    const chip = Object.assign(document.createElement("span"), {className: "chip taken" + (none ? " none" : ""),
+                                                                 textContent: text, title});
+    chips.append(chip);
+  };
+  for (const value of taken.values) {
+    takenChip(`${label(value)} → ${knobText(value.slot, value.param, value.value)}`, "Taken – Apply keeps it in the scene");
+  }
+  for (const effect of taken.effects) {
+    takenChip(`${effectName(effect.slot)} ${effect.on ? "on" : "off"}`, "Taken – Apply keeps it in the scene");
+  }
+  if (capturing && !taken.values.length && !taken.effects.length) {
+    takenChip("nothing taken yet", "Turn a knob (on the pedal or here) or switch an effect: what was set before Capture is not taken", true);
+  }
+  row.append(name, recall, control, chips);
+  if (capturing) {
+    row.append(makeButton("Apply", "primary", () => send("apply")), makeButton("Cancel", "", () => send("discard")));
+    return row;
+  }
+  row.append(waiting ? makeButton("Cancel", "", () => post("/api/scenes", {action: "cancel"}))
+    : scene.cc != null ? makeButton("Clear", "", () => send("clear"))
+    : makeButton("Learn", "learn-btn", () => send("learn")));
+  const capture = makeButton("Capture", "learn-btn", () => send("capture"));
+  capture.disabled = scenes.capturing != null || state.learning !== null;
+  const remove = makeButton("Remove", "", () => { if (confirm(`Remove the scene “${scene.name}”?`)) send("remove"); });
+  row.append(capture, remove);
+  return row;
+}
+
+// The effects of the chain: whether each is on, the switch for it, and the controller that
+// switches it (how it switches can be chosen once one is learned)
+// --- The knobs of an effect, in its row: each a slider. One that the expression pedal or a
+// controller sets shows that instead: its heel and toe as handles on the slider and as numbers to
+// type, the range learned on the pedal, and the live point where the pedal puts it now. It is
+// linked by one way only: tap the symbol beside it, then move the pedal or the controller. ---
+
+const editorSliders = new Map();        // "slot/param" → {slider, output, text, held, drop}: a free knob
+const linkViews = new Map();            // "slot/param" → what a linked knob's row paints: live point, value
+const LIST_MOST = 32;                   // a knob with up to so many texts: heel and toe are chosen from them
+const openEffects = new Set();          // "slot/id" of the effects whose knobs are shown
+let adjusting = false;                  // a handle is dragged or a number typed: the rows are not rebuilt
+let awaitingParam = false;              // a knob waits for its controller: the bridge says how it went
+
+const CURVE_PATH = {linear: "M2 14 14 2", log: "M2 14C2 6 6 2 14 2", exp: "M2 14C10 14 14 10 14 2"};
+const CURVE_TEXT = {linear: "linear", log: "changes early", exp: "changes late"};
+const CURVE_NEXT = {linear: "log", log: "exp", exp: "linear"};
+const CURVE_FN = {linear: (x) => x, log: (x) => Math.log1p(9 * x) / Math.log(10), exp: (x) => (10 ** x - 1) / 9};
+const PEDAL_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" '
+  + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="11.5" width="13" height="3" rx="1"/>'
+  + '<path d="M3.2 10 13.5 4.8" stroke-width="2.4"/><circle cx="3.2" cy="10" r="1.2" fill="currentColor" stroke="none"/></svg>';
+const KNOB_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" '
+  + 'stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 8 11.2 4.8"/></svg>';
+const CROSS = (size) => `<svg viewBox="0 0 12 12" width="${size}" height="${size}" aria-hidden="true">`
+  + '<path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const shortController = (cc) => cc == null ? "Pedal" : cc === 1 ? "Mod wheel" : `CC ${cc}`;
+const percent = (value, max) => `${(100 * Math.max(0, Math.min(max, value)) / (max || 1)).toFixed(2)}%`;
+
+// The assignment of a knob of the chain, with its place in the preset's list; null: none
+function linkOf(slot, param) {
+  const targets = savedTargets();
+  const index = targets.findIndex((target, at) => target.slot === slot && target.param === param
+                                                  && !(state.targets[at] || {}).away);
+  return index < 0 ? null : {key: currentKey(), targets, index, target: targets[index]};
+}
+// whether an assignment is shown at its knob in the effects (else in the list below them)
+function shownInEffects(target, index) {
+  const effect = chainEffect(target.slot);
+  return !!effect && !effect.empty && effect.knobs.some((knob) => knob.param === target.param)
+    && !(state.targets[index] || {}).away;
+}
+
+// the values follow the pedal, but not under a finger; the live points follow the pedal
+function syncEditorValues() {
+  for (const effect of state.chain_effects || []) {
+    for (const [param, value] of Object.entries(effect.values || {})) {
+      const known = editorSliders.get(`${effect.slot}/${param}`);
+      if (known && !known.held) {
+        known.slider.value = value;
+        known.output.textContent = known.text(value);
+      }
+    }
+  }
+  for (const view of linkViews.values()) {
+    const live = state.targets[view.index] || {};
+    // what the knob holds (from the pedal); else what was sent last; else where the pedal stands
+    let value = ((chainEffect(view.slot) || {}).values || {})[view.param];
+    if (value == null) value = live.value;
+    if (value == null && view.target.cc == null && state.pedal != null) {
+      const x = CURVE_FN[view.target.curve](state.pedal / 127);
+      value = Math.round(view.target.heel + x * (view.target.toe - view.target.heel));
+    }
+    const trouble = live.stopped ? "Stopped: the pedal does not accept it" : live.unconfirmed ? "Not confirmed by the pedal" : "";
+    view.strip.classList.toggle("bad", !!trouble);
+    view.strip.title = trouble;
+    if (view.held) continue;                       // under a finger
+    view.point.hidden = value == null;
+    if (value != null) view.point.style.left = percent(value, view.max);
+    view.output.textContent = value == null ? "–" : view.text(value);
+  }
+}
+
+function editorBlock(effect) {
+  const block = document.createElement("div");
+  block.className = "editor-effect";
+  if (!effect.knobs.length) {
+    const none = document.createElement("p");
+    none.className = "empty";
+    none.textContent = "Its knobs are not known (see “Names of effects and knobs” in the README).";
+    block.append(none);
+  }
+  for (const knob of effect.knobs) block.append(knobRow(effect, knob));
+  if (effect.knobs.length) {
+    const hint = document.createElement("p");
+    hint.className = "knob-hint";
+    hint.textContent = `Tap “Link” & move exp. pedal or controller. `
+      + `Up to ${state.limits.assignments} per preset, ${state.limits.targets} per controller.`;
+    block.append(hint);
+  }
+  return block;
+}
+
+function knobRow(effect, knob) {
+  const key = currentKey();
+  const choice = {slot: effect.slot, param: knob.param};
+  const link = key ? linkOf(effect.slot, knob.param) : null;
+  const waiting = waitingFor(choice);
+  const keyKnob = (effect.keys || []).includes(knob.param);      // a synth effect's Key: notes only
+  const range = key ? rangeOf(key, choice) : {min: 0, max: knob.max, learned: false};
+  const outside = !range.learned && (effect.slot >= state.limits.effects || knob.param >= 2 + state.limits.params);
+  const row = document.createElement("div");
+  row.className = "editor-knob" + (link ? " linked" + (link.target.cc == null ? "" : " cc") : "") + (waiting ? " waiting" : "");
+  const unlinkable = () => !state.connected ? "The pedal is not connected."
+    : keyKnob ? "A note: only the keyboard plays it."
+    : state.learning !== null ? "A knob of the pedal is being learned – apply or cancel that first."
+    : state.scenes.capturing != null ? "Not while a scene is captured."
+    : !link && outside ? "Learn it from the pedal first (Learn from pedal)."
+    : !link && savedTargets().length >= state.limits.assignments
+      ? `${state.limits.assignments} parameters are the most a preset can have.` : "";
+  // linking: tap the symbol, then move the pedal or a controller; the first one moved gets it
+  const learnController = async () => {
+    const problem = unlinkable();
+    if (problem) { showMessage(problem, true); return false; }
+    const taken = await post("/api/parameter", link ? {action: "learn", slot: effect.slot, param: knob.param}
+      : {action: "learn", slot: effect.slot, param: knob.param,
+         new: {min: range.min, max: range.max, invert: false, curve: "linear", name: ""}});
+    if (taken) awaitingParam = true;               // refused: no earlier result is shown for it
+    return taken;
+  };
+  const name = document.createElement("span");
+  name.className = "knob-name";
+  name.textContent = knob.name;
+  name.title = labelsOf(effect.id, knob.param)            // "Pattern: Rock–Click (17 steps)"
+    ? `${knob.name}: ${valueText(effect.id, knob.param, 0)}–${valueText(effect.id, knob.param, knob.max)} (${knob.max + 1} steps)`
+    : `${knob.name}, 0–${knob.max}`;
+  const output = document.createElement("output");
+  // the symbol: the expression pedal, or a knob for a controller that sets it; tapped, the next one
+  // moved takes it (it blinks until then; tapped again, it stops waiting). A Key has none.
+  if (keyKnob) {
+    row.append(document.createElement("span"));
+  } else {
+    const controller = link ? controllerName(link.target.cc) : "";
+    const icon = makeButton("", "link-icon", () => waiting ? post("/api/parameter", {action: "cancel"}) : learnController());
+    icon.innerHTML = link && link.target.cc != null ? KNOB_ICON : PEDAL_ICON;
+    icon.setAttribute("aria-label", waiting ? `Stop linking ${knob.name}` : link ? `${controller} sets ${knob.name}`
+                                                                                 : `Link ${knob.name}`);
+    icon.title = waiting ? "Move the expression pedal or a controller now – tap to stop waiting"
+      : link ? `${controller} sets it – tap, then move the expression pedal or another controller to take that one`
+      : "Link: tap, then move the expression pedal or a controller – that one sets this knob";
+    row.append(icon);
+  }
+  row.append(name);
+  if (link) {
+    row.append(linkedSlider(effect, knob, link, range, output), output, linkStrip(knob, link, range));
+  } else {
+    row.append(freeSlider(effect, knob, keyKnob, output), output);
+  }
+  return row;
+}
+
+// a knob that nothing sets: its value, set from here
+function freeSlider(effect, knob, keyKnob, output) {
+  const slider = Object.assign(document.createElement("input"), {type: "range", min: 0, max: knob.max, step: 1});
+  slider.setAttribute("aria-label", `${effect.name || "Effect " + (effect.slot + 1)} ${knob.name}`);
+  const value = (effect.values || {})[knob.param];
+  const text = (step) => valueText(effect.id, knob.param, step);
+  slider.value = value == null ? 0 : value;
+  output.textContent = value == null ? "–" : text(value);
+  slider.disabled = !state.connected || keyKnob || state.effects.change.busy;
+  let last = 0, timer = null, dropped = false;
+  const known = {slider, output, text, held: false, drop: () => { dropped = true; clearTimeout(timer); }};
+  editorSliders.set(`${effect.slot}/${knob.param}`, known);
+  const send = () => {                  // for the effect the slider was made for: the bridge checks it is still there
+    timer = null;
+    if (dropped) return;
+    last = performance.now();
+    post("/api/effects", {action: "knob", slot: effect.slot, param: knob.param, value: Number(slider.value),
+                          effect: effect.id});
+  };
+  slider.addEventListener("input", () => {
+    known.held = true;
+    output.textContent = text(slider.value);
+    if (timer === null) timer = setTimeout(send, Math.max(0, 60 - (performance.now() - last)));
+  });
+  slider.addEventListener("change", () => {      // let go: the last value goes in any case
+    if (timer !== null) clearTimeout(timer);
+    send();
+    setTimeout(() => { known.held = false; }, 800);   // until the pedal has confirmed it
+  });
+  return slider;
+}
+
+// what may be stored as heel or toe: within the range learned on the pedal, else within the knob
+const allowedEnd = (range, value) => Number.isFinite(value) && value >= range.min && value <= range.max;
+
+// a knob the pedal or a controller sets: heel and toe as handles, the learned range, the live point
+function linkedSlider(effect, knob, link, range, output) {
+  // texts: those of its values (null: numbers), text: a value as the pedal shows it
+  const view = {key: link.key, target: link.target, index: link.index, max: knob.max, output, texts: labelsOf(effect.id, knob.param),
+                text: (value) => valueText(effect.id, knob.param, value)};
+  const slider = document.createElement("span");
+  slider.className = "link-slider";
+  const track = document.createElement("span");
+  track.className = "link-track";
+  slider.append(track);
+  if (range.learned) {
+    const mark = document.createElement("span");
+    mark.className = "learned-range";
+    mark.style.left = percent(range.min, knob.max);
+    mark.style.width = `calc(${percent(range.max, knob.max)} - ${percent(range.min, knob.max)})`;
+    mark.title = `Learned on the pedal: ${view.text(range.min)}–${view.text(range.max)}`;
+    track.append(mark);
+  }
+  view.band = document.createElement("span");
+  view.band.className = "link-band";
+  view.point = document.createElement("span");
+  view.point.className = "live-point";
+  view.point.title = "What the knob is now – drag it to set it by hand (the pedal or controller sets it again when moved)";
+  view.slot = effect.slot;
+  view.param = knob.param;
+  dragPoint(view, track, effect);
+  view.heelHandle = document.createElement("span");
+  view.toeHandle = document.createElement("span");
+  const pedal = link.target.cc == null;
+  for (const [handle, end] of [[view.heelHandle, "heel"], [view.toeHandle, "toe"]]) {
+    handle.className = "end-handle";
+    handle.dataset.label = end === "heel" ? (pedal ? "H" : "0") : (pedal ? "T" : "127");
+    handle.title = `${end === "heel" ? (pedal ? "Heel" : "At 0") : (pedal ? "Toe" : "At 127")}: drag it, or tap its number`;
+    dragEnd(handle, track, view, end, range);
+  }
+  view.note = document.createElement("span");
+  view.note.className = "range-note";
+  slider.append(view.note);
+  track.append(view.band, view.point, view.heelHandle, view.toeHandle);
+  linkViews.set(`${effect.slot}/${knob.param}`, view);
+  paintEnds(view);
+  return slider;
+}
+
+function paintEnds(view) {
+  const low = Math.min(view.target.heel, view.target.toe), high = Math.max(view.target.heel, view.target.toe);
+  view.band.style.left = percent(low, view.max);
+  view.band.style.width = `calc(${percent(high, view.max)} - ${percent(low, view.max)})`;
+  view.heelHandle.style.left = percent(view.target.heel, view.max);
+  view.toeHandle.style.left = percent(view.target.toe, view.max);
+  if (view.heelText) view.heelText.textContent = view.text(view.target.heel);
+  if (view.toeText) view.toeText.textContent = view.text(view.target.toe);
+}
+
+// the point of a linked knob, moved by hand: the knob is set like a free one (until the pedal or the
+// controller moves again)
+function dragPoint(view, track, effect) {
+  const point = view.point;
+  let last = 0, timer = null, value = null;
+  const send = () => {
+    timer = null;
+    last = performance.now();
+    post("/api/effects", {action: "knob", slot: view.slot, param: view.param, value, effect: effect.id});
+  };
+  point.addEventListener("pointerdown", (event) => {
+    if (event.button > 0 || !state.connected) return;
+    event.preventDefault();
+    value = null;                                  // a tap without moving sends nothing
+    point.setPointerCapture(event.pointerId);
+    point.classList.add("drag");
+    view.held = true;
+    adjusting = true;
+    const move = (moved) => {
+      const box = track.getBoundingClientRect();
+      value = Math.round(Math.max(0, Math.min(1, (moved.clientX - box.left) / box.width)) * view.max);
+      point.style.left = percent(value, view.max);
+      view.output.textContent = view.text(value);
+      if (timer === null) timer = setTimeout(send, Math.max(0, 60 - (performance.now() - last)));
+    };
+    const up = () => {
+      point.classList.remove("drag");
+      point.removeEventListener("pointermove", move);
+      point.removeEventListener("pointerup", up);
+      point.removeEventListener("pointercancel", up);
+      if (timer !== null) { clearTimeout(timer); timer = null; }
+      if (value !== null) send();                  // let go: the last value goes in any case
+      adjusting = false;
+      setTimeout(() => { view.held = false; }, 800);   // until the pedal has confirmed it
+    };
+    point.addEventListener("pointermove", move);
+    point.addEventListener("pointerup", up);
+    point.addEventListener("pointercancel", up);
+  });
+}
+
+// what a knob takes, beside its slider for a moment ("learned 20–80", "0–100", "Off–16Bar"); then
+// the rows are built as they are kept
+function showRange(view, range) {
+  view.note.textContent = (range.learned ? "learned " : "") + `${view.text(range.min)}–${view.text(range.max)}`;
+  view.note.classList.add("show");
+  setTimeout(() => { adjusting = false; effectSignature = ""; renderEffects(); }, 900);
+}
+
+// heel or toe stored; beyond what is allowed it springs back to where it was
+async function storeEnd(view, end, value, before, range) {
+  if (!allowedEnd(range, value)) {
+    view.target[end] = Math.max(0, Math.min(view.max, value));
+    paintEnds(view);
+    setTimeout(() => {
+      for (const part of [view.heelHandle, view.toeHandle, view.band]) part.classList.add("back");
+      view.target[end] = before;
+      paintEnds(view);
+      showRange(view, range);
+    }, 120);
+    return;
+  }
+  adjusting = false;
+  if (value === before) { effectSignature = ""; renderEffects(); return; }
+  const targets = savedTargets();
+  if (!targets[view.index]) return;
+  targets[view.index][end] = value;
+  await storeTargets(view.key, targets);
+  effectSignature = "";
+  renderEffects();
+}
+
+function dragEnd(handle, track, view, end, range) {
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button > 0) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    handle.classList.add("drag");
+    adjusting = true;
+    const before = view.target[end];
+    const move = (moved) => {
+      const box = track.getBoundingClientRect();
+      view.target[end] = Math.round(Math.max(0, Math.min(1, (moved.clientX - box.left) / box.width)) * view.max);
+      handle.classList.toggle("out", !allowedEnd(range, view.target[end]));
+      paintEnds(view);
+    };
+    const up = () => {
+      handle.classList.remove("drag", "out");
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      storeEnd(view, end, view.target[end], before, range);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  });
+}
+
+// the strip of a linked knob: which controller, heel → toe as numbers to tap, invert, curve, remove
+function linkStrip(knob, link, range) {
+  const view = linkViews.get(`${link.target.slot}/${link.target.param}`);
+  const pedal = link.target.cc == null;
+  const strip = document.createElement("span");
+  strip.className = "link-strip";
+  // heel or toe, tapped: a field to type it into (for a knob with texts its text, see typedStep), or
+  // for a knob with a few texts the list of them (those beyond what is allowed greyed)
+  const number = (end) => {
+    const list = !!view.texts && view.texts.length <= LIST_MOST;
+    const button = makeButton(view.text(link.target[end]), "end-number", () => {
+      adjusting = true;
+      const before = link.target[end];
+      const field = list ? document.createElement("select") : Object.assign(document.createElement("input"), view.texts
+        ? {value: view.text(before), className: "end-field wide", spellcheck: false, autocomplete: "off"}
+        : {value: before, inputMode: "numeric", className: "end-field"});
+      if (list) {
+        field.className = "end-field";
+        field.append(...view.texts.map((text, step) => Object.assign(new Option(noteText(text), String(step)),
+                                                                     {disabled: !allowedEnd(range, step)})));
+        field.value = String(before);
+      }
+      field.setAttribute("aria-label", button.title);
+      button.replaceWith(field);
+      field.focus();
+      if (list) {
+        try { field.showPicker(); } catch (error) { /* older browsers: the list opens with a click */ }
+      } else {
+        field.select();
+      }
+      let done = false;
+      // null: left as it was (Escape, nothing typed); NaN: what was typed is no value of the knob
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        field.replaceWith(button);
+        if (Number.isNaN(value) && view.texts) { showRange(view, range); return; }   // what it takes, as its texts
+        if (value === null || !Number.isFinite(value)) {
+          adjusting = false;
+          effectSignature = "";
+          renderEffects();
+          return;
+        }
+        storeEnd(view, end, value, before, range);
+      };
+      const typed = () => field.value.trim() === "" ? null
+        : view.texts ? typedStep(view.texts, field.value, before) : Math.round(Number(field.value));
+      if (list) {
+        field.addEventListener("change", () => finish(Number(field.value)));
+        field.addEventListener("keydown", (event) => { if (event.key === "Escape") finish(null); });
+        field.addEventListener("blur", () => finish(null));
+      } else {
+        field.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") finish(typed());
+          if (event.key === "Escape") finish(null);
+        });
+        field.addEventListener("blur", () => finish(typed()));
+      }
+    });
+    button.title = `${end === "heel" ? (pedal ? "Heel" : "At 0") : (pedal ? "Toe" : "At 127")} – tap to `
+      + (list ? "choose" : "type");
+    return button;
+  };
+  view.heelText = number("heel");
+  view.toeText = number("toe");
+  const arrow = document.createElement("span");
+  arrow.className = "end-arrow";
+  arrow.textContent = "→";
+  const store = async (change) => {
+    const targets = savedTargets();
+    if (!targets[link.index]) return;
+    change(targets[link.index]);
+    await storeTargets(link.key, targets);
+    effectSignature = "";
+    renderEffects();
+  };
+  const invert = makeButton("⇅", "strip-icon" + (link.target.heel > link.target.toe ? " on" : ""),
+                            () => store((target) => { [target.heel, target.toe] = [target.toe, target.heel]; }));
+  invert.title = link.target.heel > link.target.toe ? "Inverted – tap to swap heel and toe back" : "Swap heel and toe";
+  const curve = makeButton("", "strip-icon" + (link.target.curve !== "linear" ? " on" : ""),
+                           () => store((target) => { target.curve = CURVE_NEXT[target.curve]; }));
+  curve.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-linecap="round" '
+    + `aria-hidden="true"><path d="M2 2v12h12" stroke-width="1" opacity=".35"/><path d="${CURVE_PATH[link.target.curve]}" stroke-width="1.7"/></svg>`;
+  curve.title = `Curve: ${CURVE_TEXT[link.target.curve]} – tap for the next`;
+  const remove = makeButton("", "strip-remove", () => {
+    if (!confirm(`Take ${label(link.target)} away from ${controllerName(link.target.cc)}?`)) return;
+    const targets = savedTargets();
+    targets.splice(link.index, 1);
+    storeTargets(link.key, targets).then(() => { effectSignature = ""; renderEffects(); });
+  });
+  remove.innerHTML = CROSS(9);
+  remove.setAttribute("aria-label", `Take ${knob.name} away from ${controllerName(link.target.cc)}`);
+  view.strip = strip;
+  strip.append(view.heelText, arrow, view.toeText, invert, curve, remove);
+  paintEnds(view);
+  return strip;
+}
+
+let awaitingEffect = false;      // another effect was sent to a place: the bridge says whether the pedal took it
+
+function renderEffects() {
+  const effects = state.effects;
+  const chain = effects.chain;
+  if (awaitingEffect && !effects.change.busy) {
+    awaitingEffect = false;
+    if (effects.change.result) showMessage(effects.change.result.text, !effects.change.result.ok);
+  }
+  $("effectsStatus").textContent = !state.connected ? "The pedal is not connected."
+    : !chain ? "The pedal has not reported the effects of this preset yet."
+    : effects.approved ? "" : "Switching not approved: python probe.py approve switch_effect query_patch";
+  // the knobs linked to the pedal or a controller, and whether one waits for its controller
+  if (awaitingParam && !state.param_learning) {
+    awaitingParam = false;
+    if (state.param_result) showMessage(state.param_result.text, !state.param_result.ok);
+  }
+  const key = currentKey();
+  const targets = key ? savedTargets() : [];
+  $("linkedCount").textContent = key && targets.length ? `${targets.length} / ${state.limits.assignments} linked` : "";
+  showDsp(effects);
+  const signature = JSON.stringify([effects, state.connected, chainShape(), [...openEffects], key, targets,
+                                    key ? state.learned[key] : null, state.param_learning, state.learning !== null,
+                                    state.scenes.capturing, state.limits, state.targets.map((target) => !!target.away)]);
+  const choosing = document.activeElement && $("effectRows").contains(document.activeElement)
+    && (document.activeElement.tagName === "SELECT" || document.activeElement.classList.contains("end-field"));
+  if (signature === effectSignature || choosing || draggingEffect || adjusting) {   // rebuilding would swallow clicks
+    syncEditorValues();
+    return;
+  }
+  effectSignature = signature;
+  // the places of the preset (an empty one too: an effect can be chosen for it), and the switches
+  // learned for places it does not have
+  const read = $("readPedal");
+  read.disabled = !state.connected || effects.change.busy || effects.read.busy;   // not approved: a click says so
+  read.textContent = effects.read.busy ? "Reading…" : "Read Pedal";
+  read.title = !effects.read.approved ? "Not approved: python probe.py approve read_pedal"
+    : effects.read.busy ? "Reading effect files from the pedal – it is in PC mode meanwhile, do not unplug it"
+    : "Reads which effects are on the pedal; only those can then be chosen";
+  const add = $("effectAdd");
+  add.disabled = !state.connected || !effects.add.approved || !chain || chain.length >= 6 || effects.change.busy;
+  add.title = !effects.add.approved ? "Adding effects is not approved: python probe.py approve add_effect query_patch"
+    : chain && chain.length >= 6 ? "The preset has six effects, the most it can have"
+    : "Adds an empty place at the end of the chain, for an effect to choose";
+  const shown = effects.switches.filter((item) => chain ? item.slot < chain.length || item.cc != null : item.cc != null);
+  const none = document.createElement("p");
+  none.className = "empty";
+  none.textContent = chain ? "No effects in this preset." : "";
+  for (const known of editorSliders.values()) known.drop();      // nothing more from sliders of the rows before
+  editorSliders.clear();
+  linkViews.clear();
+  $("effectRows").replaceChildren(...(shown.length ? shown.map((item) => effectRow(item, effects)) : [none]));
+  focusMovedGrip(effects);
+  syncEditorValues();
+}
+
+// The DSP the effects of the chain take, as their files declare it (an effect that is off counts all
+// the same; one whose DSP is not known is left out), to two decimals as the bridge compares it
+function dspTotal(without) {
+  const total = (state.chain_effects || []).reduce((sum, entry) =>
+    sum + (entry.empty || entry.dsp == null || entry.slot === without ? 0 : entry.dsp), 0);
+  return Math.round(total * 100) / 100;
+}
+
+// … as a bar beside the title: one part per effect, its share of the pedal's budget; hovering a part
+// names the effect
+function showDsp(effects) {
+  const meter = $("dsp");
+  const budget = effects.dsp_budget;
+  const entries = (state.chain_effects || []).filter((entry) => !entry.empty);
+  const parts = entries.filter((entry) => entry.dsp != null);
+  meter.hidden = !budget || !parts.length;
+  if (meter.hidden) return;
+  const total = dspTotal();
+  const off = (entry) => effects.chain && effects.chain[entry.slot] === false;
+  // made again only when they change: the part under the pointer stays, and so does its name
+  const signature = JSON.stringify([budget, parts.map((entry) => [entry.name, entry.dsp, off(entry)])]);
+  if (signature !== dspSignature) {
+    dspSignature = signature;
+    $("dspBar").replaceChildren(...parts.map((entry) => {
+      const part = document.createElement("i");
+      part.style.width = `${Math.min(100, entry.dsp / budget * 100)}%`;
+      if (off(entry)) part.className = "off";
+      part.title = `${entry.name}: ${Math.round(entry.dsp)}` + (off(entry) ? " (off, counts all the same)" : "");
+      return part;
+    }));
+  }
+  $("dspReadout").textContent = `${Math.round(total)} / ${budget}`;
+  meter.classList.toggle("near", total > budget * 0.9 && total <= budget);
+  meter.classList.toggle("over", total > budget);
+  const unknown = entries.filter((entry) => entry.dsp == null).map((entry) => entry.name || `effect ${entry.slot + 1}`);
+  meter.title = `DSP of the chain as the effect files declare it: ${Math.round(total)} of ${budget}, `
+    + `${Math.max(0, Math.round(budget - total))} free`
+    + (unknown.length ? ` – not known, so left out: ${unknown.join(", ")}` : "");
+}
+
+// The effect in a place, as a button: a click lists the effects the pedal has (those it reported in
+// its presets) to put there instead; choosing one sends it, Escape or a click elsewhere leaves it
+function effectChooser(slot, effects) {
+  const change = effects.change;
+  const current = chainEffect(slot);
+  const id = current ? current.id : "";
+  const button = makeButton(current && current.empty ? "Empty" : effectName(slot), "name-button", () => {
+    const key = currentKey();
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `Effect ${slot + 1}`);
+    // each with the DSP it takes; one that does not fit beside the others of the chain (on or off) is
+    // greyed out and cannot be chosen – the bridge would refuse it. One whose DSP is not known can be.
+    const budget = effects.dsp_budget;
+    const others = budget ? dspTotal(slot) : null;
+    if (!effects.choices.some((choice) => choice.id === id)) select.append(new Option(effectName(slot), id));
+    const groups = new Map();
+    for (const choice of effects.choices) {
+      if (!groups.has(choice.group)) groups.set(choice.group, Object.assign(document.createElement("optgroup"),
+                                                                            {label: choice.group}));
+      const tooMuch = budget && choice.dsp != null && choice.id !== id
+        && Math.round((others + choice.dsp) * 100) / 100 > budget;
+      const option = new Option(choice.dsp == null ? choice.name : `${choice.name}  ·  ${Math.round(choice.dsp)}`,
+                                choice.id);
+      option.disabled = Boolean(tooMuch);
+      groups.get(choice.group).append(option);
+    }
+    select.append(...groups.values());
+    select.value = id;
+    button.hidden = true;
+    button.after(select);
+    select.focus();
+    try { select.showPicker(); } catch (error) { /* older browsers: the list opens with a click */ }
+    let open = true;
+    const close = () => {
+      if (!open) return;
+      open = false;
+      select.remove();
+      button.hidden = false;
+    };
+    select.addEventListener("change", async () => {
+      const chosen = select.value;
+      close();
+      if (chosen && chosen !== id && samePreset(key) && await post("/api/effects", {action: "change", slot, effect: chosen})) {
+        awaitingEffect = true;                  // the bridge reads the patch back: its answer comes later
+      }
+    });
+    select.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        close();
+        button.focus({preventScroll: true});
+      }
+    });
+    select.addEventListener("blur", close);
+  });
+  button.disabled = !state.connected || !change.approved || change.busy || !effects.choices.length;
+  button.title = !change.approved ? "Changing effects is not approved: python probe.py approve change_effect query_patch"
+    : "Click to put another effect here";
+  return button;
+}
+
+// The grip of an effect: dragged onto another effect, it moves there in the chain (those in between
+// move up by one); with the arrow keys one place. Pointer events, so it works with a finger too.
+let draggingEffect = null;      // {slot, row, over}: the effect being dragged and the row it is over
+// {id, slot, to}: an effect moved with the arrow keys; the rows are built anew (its grip is
+// disabled while it moves), so its grip gets the focus back once it can take it
+let movedGrip = null;
+
+async function moveEffect(slot, to, byKey) {
+  const effect = chainEffect(slot);
+  movedGrip = byKey && effect ? {id: effect.id, slot, to} : null;    // before posting: its answer rebuilds the rows
+  if (await post("/api/effects", {action: "move", slot, to})) awaitingEffect = true;
+  else movedGrip = null;                // refused: the grip kept the focus, or got it back with the rows
+}
+
+// After the rows were built anew: the focus to the grip of the effect moved with the arrow keys,
+// in its new place (or the old one if it did not move), unless the focus went elsewhere meanwhile
+function focusMovedGrip(effects) {
+  if (!movedGrip) return;
+  const active = document.activeElement;
+  if (active && active !== document.body) {
+    movedGrip = null;
+    return;
+  }
+  const chain = state.chain_effects || [];
+  for (const slot of [movedGrip.to, movedGrip.slot, ...chain.map((effect) => effect.slot)]) {
+    if (!chain[slot] || chain[slot].id !== movedGrip.id) continue;
+    const grip = $("effectRows").querySelector(`.knob.fx[data-slot="${slot}"] button.grip`);
+    if (grip && !grip.disabled) {
+      grip.focus();
+      movedGrip = null;
+      return;
+    }
+  }
+  if (!effects.change.busy) movedGrip = null;       // done, and not there to be focused
+}
+
+// The x of an effect: deletes it from the chain (those after it move up); the pedal keeps that once
+// the preset is saved on it
+function effectDelete(slot, effects) {
+  const length = effects.chain ? effects.chain.length : 0;
+  const shown = chainEffect(slot);                         // the one meant: refused if another is there by now
+  const button = makeButton("×", "delete", async () => {
+    if (shown && await post("/api/effects", {action: "delete", slot, effect: shown.id})) awaitingEffect = true;
+  });
+  // drawn, not the character ×: a font sets that below the middle of the line
+  button.innerHTML = '<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" '
+    + 'stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+  button.setAttribute("aria-label", `Delete effect ${slot + 1}`);
+  button.title = !effects.delete.approved ? "Deleting effects is not approved: python probe.py approve delete_effect query_patch"
+    : length < 2 ? "A preset keeps at least one effect: choose another one for it instead"
+    : "Delete this effect (save the preset on the pedal to keep it)";
+  button.disabled = !shown || !state.connected || !effects.delete.approved || effects.change.busy || length < 2;
+  return button;
+}
+
+function effectGrip(slot, effects, row, there) {
+  const length = effects.chain ? effects.chain.length : 0;
+  const grip = makeButton("⠿", "grip", () => {});
+  grip.setAttribute("aria-label", `Move effect ${slot + 1}`);
+  grip.title = !effects.move.approved ? "Moving effects is not approved: python probe.py approve move_effect query_patch"
+    : "Drag onto another effect to move it there (or use the arrow keys)";
+  grip.disabled = !there || !state.connected || !effects.move.approved || effects.change.busy || length < 2;
+  const mark = (over) => {
+    if (draggingEffect.over) draggingEffect.over.classList.remove("drop-target");
+    draggingEffect.over = over;
+    if (over) over.classList.add("drop-target");
+  };
+  const finish = (move) => {
+    if (!draggingEffect) return;
+    const over = draggingEffect.over;
+    mark(null);
+    row.classList.remove("dragging");
+    document.body.classList.remove("dragging-effect");
+    draggingEffect = null;
+    if (move && over) moveEffect(slot, Number(over.dataset.slot));
+  };
+  grip.addEventListener("pointerdown", (event) => {
+    if (grip.disabled || event.button > 0) return;
+    event.preventDefault();
+    grip.focus({preventScroll: true});
+    grip.setPointerCapture(event.pointerId);
+    draggingEffect = {slot, row, over: null};
+    row.classList.add("dragging");
+    document.body.classList.add("dragging-effect");
+  });
+  grip.addEventListener("pointermove", (event) => {
+    if (!draggingEffect) return;
+    const under = document.elementFromPoint(event.clientX, event.clientY);
+    const over = under && under.closest("#effectRows .knob.fx[data-slot]");
+    mark(over && over !== row ? over : null);
+  });
+  grip.addEventListener("pointerup", () => finish(true));
+  grip.addEventListener("pointercancel", () => finish(false));
+  grip.addEventListener("lostpointercapture", () => finish(false));
+  grip.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") return finish(false);
+    const step = {ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1}[event.key];
+    if (!step || grip.disabled || draggingEffect) return;
+    event.preventDefault();
+    if (slot + step >= 0 && slot + step < length) moveEffect(slot, slot + step, true);
+  });
+  return grip;
+}
+
+// The arrow of an effect: opens its knobs as sliders under the row
+function effectOpener(key, effect) {
+  const open = openEffects.has(key);
+  const button = makeButton(open ? "▾" : "▸", "opener", () => {
+    if (openEffects.has(key)) openEffects.delete(key); else openEffects.add(key);
+    effectSignature = "";
+    renderEffects();
+  });
+  button.setAttribute("aria-label", `${open ? "Hide" : "Show"} the knobs of ${effect.name || "the effect"}`);
+  button.setAttribute("aria-expanded", String(open));
+  button.title = open ? "Hide the knobs" : "Show the knobs";
+  return button;
+}
+
+function effectRow(item, effects) {
+  const chain = effects.chain;
+  // a place of the preset: an effect, or an empty place to choose one for (nothing to switch there)
+  const there = !!chain && item.slot < chain.length;
+  const filled = there && !(chainEffect(item.slot) || {}).empty;
+  const on = filled ? chain[item.slot] : null;               // true, false, or null while unknown
+  const waiting = effects.learning === item.slot;
+  const row = document.createElement("div");
+  row.className = waiting ? "knob fx waiting" : "knob fx";
+  const name = document.createElement("b");
+  const place = document.createElement("small");
+  place.textContent = item.slot + 1;
+  name.append(place, there ? effectChooser(item.slot, effects) : `Effect ${item.slot + 1}`);
+  if (there) name.append(effectDelete(item.slot, effects));      // the x stays with the name
+  const current = chainEffect(item.slot);
+  const key = current ? `${item.slot}/${current.id}` : null;
+  if (filled) name.append(effectOpener(key, current));
+  const flip = makeButton("", "lamp" + (on === true ? " on" : on === false ? " off" : ""),
+                          () => post("/api/effects", {action: "switch", slot: item.slot}));
+  flip.setAttribute("aria-label", on === true ? "On: switch off" : on === false ? "Off: switch on" : "Switch the effect");
+  flip.title = on === true ? "On – click to switch off" : on === false ? "Off – click to switch on" : "Switch the effect over";
+  flip.disabled = !effects.approved || !state.connected || !filled;
+  if (there) row.dataset.slot = item.slot;
+  row.append(effectGrip(item.slot, effects, row, there), name, flip);
+  // what switches it on and off: "Learn" (then press a switch), or its controller with an x to take it away
+  const switching = document.createElement("div");
+  switching.className = "fx-switch";
+  if (waiting) {
+    const text = document.createElement("span");
+    text.textContent = "Press a switch…";
+    switching.append(text, makeButton("Cancel", "", () => post("/api/effects", {action: "cancel"})));
+  } else if (item.cc != null) {
+    const which = document.createElement("b");
+    which.className = "switch-cc";
+    which.textContent = `CC ${item.cc}`;
+    which.title = `Controller ${item.cc} switches it on and off`;
+    const mode = document.createElement("select");
+    mode.title = "How the controller switches the effect: its value (on from 64), or every press switches it over";
+    mode.append(new Option("Value", "value"), new Option("Press", "press"));
+    mode.value = item.press ? "press" : "value";
+    mode.addEventListener("change", async () => {
+      mode.blur();
+      await post("/api/effects", {action: "press", slot: item.slot, press: mode.value === "press"});
+    });
+    const remove = makeButton("", "switch-remove", () => post("/api/effects", {action: "clear", slot: item.slot}));
+    remove.innerHTML = CROSS(9);
+    remove.setAttribute("aria-label", `Take controller ${item.cc} away from effect ${item.slot + 1}`);
+    remove.title = "Take the controller away";
+    switching.append(which, mode, remove);
+  } else {
+    const learn = makeButton("Learn", "learn-btn", () => {
+      if (!effects.approved) { showMessage("Switching is not approved: python probe.py approve switch_effect query_patch", true); return; }
+      if (!effects.controller) { showMessage("No controller is connected.", true); return; }
+      post("/api/effects", {action: "learn", slot: item.slot});
+    });
+    learn.title = "Then press the switch (or move the controller) that should switch this effect on and off";
+    learn.disabled = !state.connected;
+    switching.append(learn);
+  }
+  if (chain && !there) {
+    const away = document.createElement("span");
+    away.textContent = "not in this preset";
+    switching.append(away);
+  }
+  row.append(switching);
+  if (filled && !openEffects.has(key)) {                  // folded: what the pedal and controllers set of it
+    const chips = document.createElement("div");
+    chips.className = "link-chips";
+    const targets = currentKey() ? savedTargets() : [];
+    for (const [index, target] of targets.entries()) {
+      if (target.slot !== item.slot || !shownInEffects(target, index)) continue;
+      const knob = knobOf(target.slot, target.param);
+      const chip = document.createElement("span");
+      chip.className = "link-chip" + (target.cc == null ? "" : " cc");
+      chip.innerHTML = target.cc == null ? PEDAL_ICON : `<b>${target.cc === 1 ? "MW" : "CC" + target.cc}</b>`;
+      chip.append(` ${knob ? knob.name : "Parameter " + (target.param - 1)} `);
+      const heel = targetText(target, target.heel), toe = targetText(target, target.toe);
+      const range = document.createElement("em");
+      range.textContent = `${heel}→${toe}`;
+      chip.append(range);
+      chip.title = `${controllerName(target.cc)} sets ${label(target)}, ${heel} → ${toe}`;
+      chips.append(chip);
+    }
+    if (chips.childElementCount) row.append(chips);
+  }
+  if (filled && openEffects.has(key)) {                   // its knobs, below the row, across both columns
+    row.classList.add("open");
+    const knobs = editorBlock(current);
+    knobs.classList.add("fx-knobs");
+    row.append(knobs);
+  }
+  return row;
+}
+
+// The synth effect of the preset, the arpeggiator and the sequencer; and the synth knobs a control
+// of the keyboard set in every preset before 2026-10-19, which hold on until they are removed
+function renderSynth() {
+  const synth = state.synth;
+  $("synthStatus").hidden = $("arpPanel").hidden = $("seqPanel").hidden = !synth;
+  if (!synth) { $("everyPreset").replaceChildren(); knobSignature = ""; return; }
+  $("synthStatus").textContent = (synth.slot == null ? "No synth effect in this preset"
+                                                      : `${synth.effect} plays from the keyboard in this preset`)
+    + (synth.keyboard ? "" : "  ·  keyboard not connected")
+    + (synth.external == null ? "" : `  ·  external sequencer ${synth.external ? "connected" : "not connected"}`)
+    + (synth.voices.length > 1 ? "  ·  voices " + synth.voices.map((note) => note || "–").join(" ") : "")
+    + (synth.latency_ms == null ? "" : `  ·  note → confirmed ${synth.latency_ms} ms`);
+
+  renderArp(synth.arp, synth.seq.on);
+  renderSeq(synth.seq, synth.playable);
+
+  const signature = JSON.stringify([synth.knobs, synth.learning, synth.playable, synth.effect, synth.arp.cc, synth.seq.cc]);
+  if (signature === knobSignature) return;                 // rebuilding on every poll would swallow clicks
+  knobSignature = signature;
+  const older = synth.knobs.filter((knob) => knob.effect === synth.effect && knob.cc != null);
+  $("everyPreset").replaceChildren(...older.map((knob) => {
+    const row = document.createElement("div");
+    row.className = "knob";
+    const name = document.createElement("b");
+    name.textContent = `${knob.effect} · ${knob.label}` + (knob.knob !== knob.label ? ` (${knob.knob})` : "");
+    const control = document.createElement("span");
+    control.textContent = ccName(knob.cc);
+    const remove = makeButton("Remove", "", () => post("/api/synth", {action: "clear", knob: knob.name}));
+    remove.title = "Assigned before the parameters of each preset could be; assign it there instead if you like";
+    row.append(name, control, remove);
+    return row;
+  }));
+  $("arpSwitch").replaceChildren(controlRow({name: "Arp", label: "Controller", cc: synth.arp.cc}, synth));
+  $("seqSwitch").replaceChildren(controlRow({name: "Seq", label: "Controller", cc: synth.seq.cc}, synth));
+}
+
+const ccName = (cc) => cc === 1 ? "Mod wheel" : `CC ${cc}`;
+
+// The row of the controller that switches the arpeggiator or the step sequencer: whether it has
+// one (which one is in the tooltip), and one switch: Learn, or Clear once it has one
+function controlRow(knob, synth) {
+  const waiting = synth.learning === knob.name;
+  const row = document.createElement("div");
+  row.className = waiting ? "knob waiting" : "knob";
+  const name = document.createElement("b");
+  name.textContent = knob.label;
+  row.title = `Switches the ${knob.name === "Arp" ? "arpeggiator" : "step sequencer"}: on at values 64–127, off below`;
+  const assigned = knob.cc != null && !waiting;
+  const control = document.createElement("span");
+  control.textContent = waiting ? "Move a control…" : assigned ? "assigned" : "not assigned";
+  if (assigned) control.title = knob.cc === 1 ? "Mod wheel (CC 1)" : `CC ${knob.cc}`;
+  const learn = makeButton(waiting ? "Cancel" : assigned ? "Clear" : "Learn", waiting || assigned ? "" : "learn-btn",
+                           () => post("/api/synth", waiting ? {action: "cancel"}
+                                                            : {action: assigned ? "clear" : "learn", knob: knob.name}));
+  learn.disabled = !waiting && !assigned && !synth.playable;
+  row.append(name, control, learn);
+  return row;
+}
+
+// The arpeggiator: its switch, what it plays, and its settings (a field being edited is left alone)
+function renderArp(arp, sequencing) {
+  $("arpOn").textContent = arp.on ? "On" : "Off";
+  $("arpOn").classList.toggle("primary", arp.on);
+  $("arpOn").setAttribute("aria-pressed", String(arp.on));
+  const clock = arp.clock !== "midi" ? ""
+    : arp.clock_bpm == null ? "  ·  no MIDI clock arriving"
+    : `  ·  MIDI clock ${arp.clock_bpm} BPM` + (arp.clock_running ? "" : ", stopped");
+  $("arpStatus").textContent = sequencing || !arp.on ? "Off"
+    : (arp.note ? `Playing ${arp.note}` : "Waiting for keys") + clock;
+  for (const field of document.querySelectorAll("[data-arp]")) {
+    if (field === document.activeElement) continue;
+    const value = arp[field.dataset.arp];
+    if (field.type === "checkbox") field.checked = value;
+    else field.value = String(value);
+    if (field.dataset.arp === "tempo") field.disabled = arp.clock === "midi";
+  }
+}
+
+// The step sequencer: its switch, where it is in the pattern, the pattern as text (text being
+// edited is left alone), and the switches for recording one from the keyboard
+function renderSeq(seq, keyboard) {
+  const recording = seq.recording != null;
+  const recorded = recording ? seq.recording.split(" ").filter(Boolean).length : 0;
+  $("seqOn").textContent = seq.on ? "On" : "Off";
+  $("seqOn").classList.toggle("primary", seq.on);
+  $("seqOn").setAttribute("aria-pressed", String(seq.on));
+  $("seqStatus").textContent = recording
+      ? `Recording step ${recorded + 1} of up to ${seq.max_steps} – play a key, or add a rest or a tie`
+    : !seq.on ? "Off"
+    : !seq.steps ? "No pattern yet – record one or write it below"
+    : seq.step == null ? "Waiting for a key"
+    : `Playing step ${seq.step + 1} of ${seq.steps}`;
+  const field = $("seqPattern");
+  field.title = `Note names, - for a rest, _ for a tie; up to ${seq.max_steps} steps. Enter keeps it.`;
+  field.readOnly = recording;
+  field.placeholder = recording ? "" : "C3 E3 - G3 _";       // the example is not what has been recorded
+  if (recording) seqDraft = false;
+  if (recording || !(seqDraft || field === document.activeElement)) field.value = recording ? seq.recording : seq.pattern;
+  $("seqRecord").textContent = recording ? "Stop" : "Record";
+  $("seqRecord").disabled = !recording && !keyboard;
+  for (const id of ["seqRest", "seqTie", "seqBack", "seqCancel"]) $(id).hidden = !recording;
+}
+
+$("learn").addEventListener("click", () => post("/api/learn", {action: "start"}));
+// a state without synth (none set up, or safe mode) has no switches to read
+const synthState = () => state && state.synth ? state.synth : null;
+$("arpOn").addEventListener("click", () => { if (synthState()) post("/api/arp", {on: !state.synth.arp.on}); });
+for (const field of document.querySelectorAll("[data-arp]")) {
+  field.addEventListener("change", () => {
+    const name = field.dataset.arp;
+    const value = field.type === "checkbox" ? field.checked
+      : ARP_NUMBERS.includes(name) ? Number(field.value) : field.value;
+    post("/api/arp", {[name]: value});
+  });
+}
+for (const select of document.querySelectorAll("[data-device]")) {
+  select.addEventListener("change", async () => {
+    const name = select.value;
+    select.blur();
+    await post("/api/devices", {[select.dataset.device]: name});
+    deviceSignature = "";                                    // also after a refusal: back to what is chosen
+    renderDevices();
+  });
+}
+$("seqOn").addEventListener("click", () => { if (synthState()) post("/api/seq", {on: !state.synth.seq.on}); });
+$("seqRecord").addEventListener("click", () => {
+  if (synthState()) post("/api/seq", {record: state.synth.seq.recording == null ? "start" : "stop"});
+});
+for (const action of ["rest", "tie", "back", "cancel"]) {
+  $("seq" + action[0].toUpperCase() + action.slice(1)).addEventListener("click", () => post("/api/seq", {record: action}));
+}
+$("seqPattern").addEventListener("input", () => { seqDraft = true; });
+$("seqPattern").addEventListener("change", async () => {
+  if (!seqDraft) return;
+  if (await post("/api/seq", {pattern: $("seqPattern").value})) {     // refused: the text stays to be corrected
+    seqDraft = false;
+    if (synthState()) renderSeq(state.synth.seq, state.synth.playable);
+  }
+});
+$("seqPattern").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") $("seqPattern").blur();                  // stores it, like leaving the field
+  if (event.key !== "Escape") return;
+  seqDraft = false;                                                   // back to the stored pattern
+  $("seqPattern").blur();
+  if (synthState()) renderSeq(state.synth.seq, state.synth.playable);
+});
+$("learnCancel").addEventListener("click", () => post("/api/learn", {action: "cancel"}));
+$("learnStop").addEventListener("click", async () => {
+  const done = await post("/api/learn", {action: "stop"});
+  if (!done || !done.result || state.unavailable) return;
+  const result = done.result;
+  renderExpression(true);
+  // not assigned: the preset has all the parameters it can have, or the expression pedal sets
+  // all those it can of it (those without a controller of their own)
+  const assigned = savedTargets();
+  const limits = state.limits;
+  showMessage(`Learned: ${label(result)}, values ${knobText(result.slot, result.param, result.min)}–`
+    + `${knobText(result.slot, result.param, result.max)}. `
+    + (result.added ? "Assigned to the preset."
+       : result.known ? "Its range has been updated."
+       : (assigned.length >= limits.assignments
+          ? `The preset already has ${limits.assignments} parameters, the most it can have`
+          : `The expression pedal already sets ${limits.targets} parameters of this preset, the most it can`)
+         + "; the learned range is kept for later."));
+});
+
+$("sceneAdd").addEventListener("click", () => {
+  const name = prompt("Name of the scene (for example Solo):");
+  if (name && name.trim()) post("/api/scenes", {action: "add", name: name.trim()});
+});
+// Export: a backup of everything to bring back with "Import…", or the settings file for the Pi
+// (its card, or a USB stick put into the running Pi; not offered by the Pi itself)
+$("exportButton").addEventListener("click", () => {
+  const button = $("exportButton");
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", "What to export");
+  select.append(new Option("Export…", "", true, true),
+                new Option("Backup – to bring back with Import", "backup"));
+  if (!state.fixed) select.append(new Option("File for the Pi – card or USB stick", "pi"));
+  button.hidden = true;
+  button.after(select);
+  select.focus();
+  try { select.showPicker(); } catch (error) { /* older browsers: the list opens with a click */ }
+  let open = true;
+  const close = () => {
+    if (!open) return;
+    open = false;
+    select.remove();
+    button.hidden = false;
+  };
+  select.addEventListener("change", () => {
+    const chosen = select.value;
+    close();
+    if (chosen === "backup") download("/api/export");
+    else if (chosen === "pi") download("/api/settings-file");
+  });
+  select.addEventListener("keydown", (event) => { if (event.key === "Escape") { close(); button.focus(); } });
+  select.addEventListener("blur", close);
+});
+$("importButton").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch (error) {
+    showMessage("That is not an MS Plus Bridge export file.", true);
+    return;
+  }
+  const keys = Object.keys((data && data.presets) || {});
+  const replaced = (state.mappings || []).filter((m) => keys.includes(m.key)).map((m) => m.display);
+  const keyboard = Boolean(data && data.keyboard);
+  const switches = Boolean(data && data.effects);
+  // the scenes of a file replace those of every preset, also of the presets it has none for
+  const scenes = Boolean(data) && typeof data === "object" && "scenes" in data;
+  const replacing = [replaced.length ? `the assignments for preset ${replaced.join(", ")}` : "",
+                     keyboard ? "the keyboard’s controllers, the arpeggiator’s settings and the sequencer’s pattern" : "",
+                     switches ? "the effect switches" : "",
+                     scenes ? "the scenes of every preset (a preset the file has no scenes for loses its own)" : ""]
+    .filter(Boolean).join(", and ");
+  if (replacing && !confirm(`This file replaces ${replacing}. Continue?`)) return;
+  const done = await post("/api/import", data);
+  if (done) {
+    renderExpression(true);
+    const imported = [done.result.length ? `preset ${done.result.join(", ")}` : "",
+                      keyboard ? "the keyboard settings" : "",
+                      switches ? "the effect switches" : "",
+                      scenes ? "the scenes" : ""].filter(Boolean);
+    showMessage(imported.length ? `Imported: ${imported.join(" and ")}.` : "Imported – the file changed nothing.");
+  }
+});
+
+$("readPedal").addEventListener("click", async () => {
+  if (!state.effects.read.approved) { showMessage($("readPedal").title, true); return; }
+  if (!confirm("To read its list of files the pedal goes into PC mode for a second or two – up to about half a "
+               + "minute when it reads effect files the bridge does not know yet; do not unplug it meanwhile – and "
+               + "loads its preset again, as it is saved: what was changed and not saved is lost. Read the pedal?")) return;
+  $("readPedal").disabled = true;
+  const done = await post("/api/effects", {action: "read_pedal"});   // a second or two (with effect files to read up to half a minute): the pedal is in PC mode meanwhile
+  if (done && state.effects.read.result) showMessage(state.effects.read.result.text, !state.effects.read.result.ok);
+  effectSignature = "";                          // the button as the state has it, also when nothing else changed
+  renderEffects();
+});
+$("effectAdd").addEventListener("click", async (event) => {
+  event.preventDefault();                                  // in the title line: it must not fold the part
+  if (await post("/api/effects", {action: "add"})) awaitingEffect = true;   // the bridge reads the patch back
+});
+
+// Every part of the panel folds; which ones are open is remembered in this browser
+for (const panel of document.querySelectorAll("details.panel, details.part")) {
+  const key = "panel." + panel.dataset.panel;
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored !== null) panel.open = stored === "1";
+  } catch (error) { /* no storage: the parts open as the page has them */ }
+  panel.addEventListener("toggle", () => {
+    try { localStorage.setItem(key, panel.open ? "1" : "0"); } catch (error) { /* not remembered then */ }
+  });
+}
+
+poll();
+setInterval(poll, 400);
+</script>
+</body>
+</html>

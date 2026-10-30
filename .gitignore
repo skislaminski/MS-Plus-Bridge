@@ -1,0 +1,13 @@
+# What each installation makes and keeps for itself: not part of the program
+.venv/
+__pycache__/
+logs/
+profiles/
+config.yaml
+approvals.json
+measurements.json
+controls.json
+pedal_effects.json
+MS Plus Bridge.app/
+Expression Bridge.app/
+.DS_Store

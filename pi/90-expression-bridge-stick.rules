@@ -1,0 +1,6 @@
+# MS Plus Bridge: a USB stick is mounted read-only at /media/stick/<partition> as soon as it is
+# put in (systemd-mount, so nothing waits for it); the bridge looks there every two seconds for a
+# settings file. When the stick is pulled out, systemd lets go of the mount by itself. The SD card
+# is not on USB and is not touched.
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", ENV{ID_FS_USAGE}=="filesystem", \
+  RUN{program}+="/usr/bin/systemd-mount --no-block --automount=no --collect --options=ro,nosuid,nodev,noexec $devnode /media/stick/%k"

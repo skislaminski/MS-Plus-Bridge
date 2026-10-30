@@ -1,0 +1,20 @@
+# systemd unit for the MS Plus Bridge on a Raspberry Pi: connects Bluetooth MIDI devices
+# (pi/bluetooth-midi.sh). pi/install.sh puts it into /etc/systemd/system with the place of the
+# boot partition filled in (/boot/firmware).
+
+[Unit]
+Description=MS Plus Bridge: connect Bluetooth MIDI devices
+After=bluetooth.service
+Wants=bluetooth.service
+RequiresMountsFor=@BOOT@
+
+[Service]
+ExecStart=/bin/bash @BOOT@/expression-bridge/pi/bluetooth-midi.sh
+Restart=always
+RestartSec=10
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

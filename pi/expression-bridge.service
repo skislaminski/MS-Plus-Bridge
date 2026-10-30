@@ -1,0 +1,36 @@
+# systemd unit for the MS Plus Bridge on a Raspberry Pi; pi/install.sh puts it into
+# /etc/systemd/system with the place of the boot partition filled in (/boot/firmware).
+#
+# The program and its settings are on the boot partition, written there by export.py on the
+# computer the bridge was set up on. It runs as root for the status light and for taking a
+# settings file over from a USB stick into the boot partition; everything else of the system
+# is read-only for it.
+
+[Unit]
+Description=MS Plus Bridge (MIDI controllers to the Zoom MS Plus pedal)
+RequiresMountsFor=@BOOT@
+# No network needed (the interface is there whenever one is), and the bridge waits for its USB
+# devices by itself.
+
+[Service]
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# --stick: a settings file on a USB stick (mounted below /media/stick, see
+# 90-expression-bridge-stick.rules) is taken over at the start or when the stick is put in.
+# --listen: the interface for a phone in the same WLAN, http://<name of the Pi>.local; what is
+# changed there is written into the settings file on the boot partition.
+ExecStart=/usr/bin/python3 @BOOT@/expression-bridge/bridge.py --settings @BOOT@ --stick /media/stick --listen
+# SIGTERM makes the bridge close the gate, switch the pedal's edit mode off and close the ports.
+KillSignal=SIGTERM
+TimeoutStopSec=5
+Restart=always
+RestartSec=2
+# Notes and controller values before other work of the system
+Nice=-10
+ProtectSystem=strict
+ReadWritePaths=@BOOT@
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
