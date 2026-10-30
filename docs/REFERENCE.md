@@ -581,7 +581,9 @@ format, so notes, pitch wheel, arpeggiator and step sequencer work the same on e
   2026-10-18 all five one after another (KeyWave 54 of 54), with no note left unconfirmed.
 - **The bridge knows an effect by the last three bytes of its id.** The first byte is the
   category, and an installer may put the effect into another one: KeySweep is `07000f71` as it is
-  built and was `09000f71` in "SFX" of the MS-60B+ here. A new name does not change the id.
+  built, was `09000f71` in "SFX" of the MS-60B+ here and is `08000f71` in "Synth" since
+  2026-10-30. A new name does not change the id, nor does another category: what is assigned to
+  a custom effect stays with it.
   Whichever of the seven comes first in the chain of the preset is played.
 - Any other effect whose id ends in one of these seven numbers would be taken for that synth
   effect and get its Key knob written. On the MS-60B+ here (125 effects) there was none.
@@ -933,7 +935,8 @@ approval:
 
 A click on an effect's name under "Preset" → "Effects" lists the effects the pedal has, by
 group (Dynamics, Filter … Reverb) as the pedal lists them: a custom or community effect in the
-category it is installed into (most custom ones in SFX, where the installer puts them), and once
+category it is installed into (the synth effects in Synth, others in Filter, Drive, Modulation,
+Pitch shift, Delay or SFX), and once
 also where an older preset reported it under the id of an earlier build. Choosing one puts it
 into that place of the preset selected on the pedal, with its knobs at their defaults. The bridge
 sends it as zoom-explorer does (parameter 1 of the place, the effect's whole id as its value)

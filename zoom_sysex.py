@@ -168,8 +168,9 @@ BAND_KNOBS = tuple((f"Key{voice + 1}", KEY_MAX) for voice in range(MAX_VOICES)) 
 PLUCK_KNOBS = (("Key", KEY_MAX), ("Level", 100), ("Trig", 1), ("Decay", 100), ("Tone", 100),
                ("Pick", 2), ("Oct", 2), ("Dyn", 100), ("Thr", 100), ("Dry", 100))
 # An effect id is a category (the top byte) and a number. The category changes with where an
-# installer puts the effect on the pedal (KeySweep is 07000f71 as built and 09000f71 in "SFX" of
-# an MS-60B+), so the bridge knows the effects by the number alone.
+# installer puts the effect on the pedal (KeySweep is 07000f71 as built, was 09000f71 in "SFX" of
+# an MS-60B+ and is 08000f71 in "Synth" since 2026-10-30), so the bridge knows the effects by the
+# number alone.
 EFFECT_NUMBER = 0xFFFFFF
 MAX_SLOTS = 6
 
@@ -390,7 +391,7 @@ def installed(name: str, number: int, knobs: tuple, lfo: Optional[str] = "Trm", 
     when it has the effect and its Key knobs are where a patch keeps them; otherwise from the lists
     above, the builds of 2026-10-22 (Pluck: of 2026-10-21). The tests
     set MS_PLUS_BRIDGE_SYNTHS=builtin to run against the lists above whatever is installed."""
-    entry = None if os.environ.get("MS_PLUS_BRIDGE_SYNTHS") == "builtin" else effect_names.effect(0x09000000 | number)
+    entry = None if os.environ.get("MS_PLUS_BRIDGE_SYNTHS") == "builtin" else effect_names.effect(number)
     if entry and entry["knobs"]:
         try:
             return SynthEffect(name, number, tuple((knob, top) for knob, top in entry["knobs"]), lfo=lfo,

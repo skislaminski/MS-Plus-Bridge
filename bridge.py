@@ -143,8 +143,8 @@ EFFECT_CHECK_TIMEOUT = 2.0   # … and given up on if the pedal does not send it
 # takes any effect and then overflows, so the bridge keeps to it itself (over_budget).
 DSP_BUDGET = 270
 # The pedal's categories of effects by the top byte of an id (zoom-explorer, for the MS-60B+). Custom
-# and community effects are listed where they are installed, as the pedal lists them (most of the
-# custom ones in SFX, where the installer puts them).
+# and community effects are listed where they are installed, as the pedal lists them (since
+# 2026-10-30 the custom ones in their own categories, before all in SFX).
 EFFECT_GROUPS = {1: "Dynamics", 2: "Filter", 3: "Drive", 4: "Preamp", 5: "Bass amp", 6: "Modulation",
                  7: "Pitch shift", 8: "Synth", 9: "SFX", 10: "Delay", 11: "Reverb"}
 CLOCK_TIMEOUT = 0.5        # no MIDI clock for this long: the clock has stopped, arpeggiator and sequencer fall silent
@@ -665,9 +665,16 @@ def effect_id(text) -> Optional[int]:
 
 def same_effect(one: Optional[int], other: Optional[int]) -> bool:
     """Two effect ids name the same effect. The whole id: its lower bits alone are shared by
-    effects of different categories (BlackOpt 01000020, AnalogDly 0A000020). An empty place (0)
-    is no effect."""
-    return bool(one) and one == other
+    effects of different categories (BlackOpt 01000020, AnalogDly 0A000020) – except for a custom
+    effect, whose number is its own and whose category is where an installer put it (all in SFX
+    until 2026-10-30, then KeySweep 09000F71 became 08000F71 in Synth): what was assigned to it
+    stays with it. An empty place (0) is no effect."""
+    if not one or not other:
+        return False
+    number = one & zs.EFFECT_NUMBER
+    if number >= effect_names.CUSTOM_FROM and number not in effect_names.ZOOM_OWN:
+        return number == other & zs.EFFECT_NUMBER
+    return one == other
 
 
 def place_of(slot: int, effect: Optional[int], chain: Optional[list]) -> Optional[int]:
@@ -4469,6 +4476,20 @@ class Bridge:
                 for slot in {slot for slot, _ in scene["values"]} | set(scene["effects"]):
                     if slot not in known and effect_at(slot):
                         known[slot], changed = effect_at(slot), True
+        # a custom effect the pedal reports under another id than the one stored (installed into
+        # another category, same_effect) is stored under the id it has now: one effect, one id
+        current = lambda slot, effect: effect if effect in chain else (
+            chain[slot] if slot < len(chain) and same_effect(chain[slot], effect)
+            else next((other for other in chain if same_effect(other, effect)), effect))
+        renamed = tuple(replace(mapping, effect=current(mapping.slot, mapping.effect)) if mapping.effect else mapping
+                        for mapping in mappings)
+        if renamed != mappings:
+            changed, mappings = True, renamed
+        for scene in scenes:
+            known = scene.get("chain", {})
+            for slot, effect in list(known.items()):
+                if current(slot, effect) != effect:
+                    known[slot], changed = current(slot, effect), True
         assigned = {(mapping.slot, mapping.effect) for mapping in mappings if mapping.effect} | {
             (slot, effect) for scene in scenes for slot, effect in scene.get("chain", {}).items()}
         home = {slot for slot, effect in assigned if slot < len(chain) and same_effect(chain[slot], effect)}

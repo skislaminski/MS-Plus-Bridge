@@ -68,6 +68,11 @@ ALWAYS_READ = {"N2ZBANK.ZD2"}
 CUSTOM_FROM = 0xF00
 ZOOM_OWN = {0xF00, 0xFF0}                      # LINE SEL and BPM among them
 BUILT_IN = {0xFF0: {"name": "BPM", "knobs": []}}  # in the pedal itself: no effect file to read
+# An effect read from the pedal before this day counts as not described, so that the next Read
+# Pedal reads its file again: on 2026-10-30 the custom effects were installed into their own
+# categories instead of SFX, at the same size (only the id's top byte changed), and the pedal's
+# list of files gives names and sizes only (described).
+READ_SINCE = "2026-10-30"
 
 _table: Optional[dict] = None
 _by_number: Optional[tuple] = None             # (table, lower 24 bits of an id → the entries that have them)
@@ -356,7 +361,8 @@ def use_cache(path: Optional[Path], keep: bool = True) -> None:
     read from there); what is there is taken at once. An entry not as remember writes it is left
     out, and so are texts of values that do not fit its knobs (_fitting_labels). One of an effect
     without "dsp" (read before the bridge read the DSP of effects, 2026-10-22) is taken without it:
-    it counts as not described, so that the next Read Pedal reads its file again (described)."""
+    it counts as not described, so that the next Read Pedal reads its file again (described), as
+    one read before READ_SINCE."""
     global CACHE, _keep, _read, _read_version
     CACHE, _keep = path, keep
     try:
@@ -379,7 +385,8 @@ def use_cache(path: Optional[Path], keep: bool = True) -> None:
                 _read[str(file).upper()] = {"id": f"{int(entry['id'], 16):08X}", "name": str(entry["name"]),
                                             "knobs": knobs, "size": entry["size"],
                                             **({"dsp": None if load is None else float(load)} if "dsp" in entry else {}),
-                                            **({"labels": texts} if texts else {})}
+                                            **({"labels": texts} if texts else {}),
+                                            **({"since": entry["since"]} if isinstance(entry.get("since"), str) else {})}
         except (KeyError, TypeError, ValueError, AttributeError):
             continue
     _read_version += 1
@@ -422,7 +429,8 @@ def remember(effects) -> None:
         if effect["id"] is not None:
             texts = _fitting_labels(effect.get("labels"), effect["knobs"])
             _read[file] = {"id": f"{effect['id']:08X}", "name": effect["name"], "knobs": effect["knobs"],
-                           "size": effect["size"], "dsp": effect.get("dsp"), **({"labels": texts} if texts else {})}
+                           "size": effect["size"], "dsp": effect.get("dsp"), **({"labels": texts} if texts else {}),
+                           "since": READ_SINCE}
         elif not effect.get("unread"):
             _read[file] = {"id": None, "size": effect["size"]}
         elif _read.get(file, {}).get("size") != effect["size"] or _read[file].get("unread"):
@@ -451,14 +459,14 @@ def tried(name: str, size: Optional[int]) -> bool:
 def described(name: str, size: Optional[int]) -> bool:
     """Whether the file of that name and size on the pedal is described: read from the pedal at
     that size (also as one that holds no effect) – an effect with the DSP it takes, as read since
-    2026-10-22 (use_cache) – or in the table as that build (_same_build). Never one that is read
-    at every Read Pedal (ALWAYS_READ)."""
+    2026-10-22 (use_cache), and read since READ_SINCE – or in the table as that build (_same_build).
+    Never one that is read at every Read Pedal (ALWAYS_READ)."""
     file = name.upper()
     if file in ALWAYS_READ:
         return False
     read = _read.get(file)
     if (read is not None and not read.get("unread") and (size is None or read.get("size") == size)
-            and (read.get("id") is None or "dsp" in read)):
+            and (read.get("id") is None or ("dsp" in read and read.get("since", "") >= READ_SINCE))):
         return True
     if _table is None:
         table()

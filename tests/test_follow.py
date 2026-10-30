@@ -163,6 +163,20 @@ class Scenes(FollowCase):
         self.assertEqual((kept["values"], kept["effects"], kept["chain"]),
                          ([{"slot": 0, "param": 2, "value": 30}], {"1": False}, {"1": f"{DELAY:08X}"}))
 
+    def test_a_custom_effect_moved_to_another_category_is_followed_under_its_new_id(self):
+        """Drone left SFX for Synth on 2026-10-30 (09000F8D → 08000F8D): what was assigned to it
+        under either id is one effect's, and goes along when it moves."""
+        old, new = 0x09000F8D, 0x08000F8D
+        self.install({PRESET: [mapping(0, 2, **on(old))]})
+        bridge.CONTROLS.write_text(json.dumps({"controls": {}, "scenes": {PRESET: [self.scene(
+            values=[{"slot": 0, "param": 3, "value": 30}], effects={}, chain={"1": f"{new:08X}"})]}}),
+            encoding="utf-8")
+        world = World([(1.0, lambda world: world.rearrange([1, 0]))], chain=[new, STOCK])
+        self.run_bridge(world)
+        self.assertEqual(stored(), [mapping(1, 2, **on(new))])
+        kept = json.loads(bridge.CONTROLS.read_text(encoding="utf-8"))["scenes"][PRESET][0]
+        self.assertEqual((kept["values"], kept["chain"]), ([{"slot": 1, "param": 3, "value": 30}], {"2": f"{new:08X}"}))
+
     def test_a_scene_leaves_what_belongs_to_an_effect_that_is_not_there(self):
         self.install({PRESET: [mapping(0, 3, **on(STOCK))]}, measured={PRESET: learned((1, 2, 0, 962))})
         bridge.CONTROLS.write_text(json.dumps({"controls": {}, "scenes": {PRESET: [self.scene()]}}), encoding="utf-8")

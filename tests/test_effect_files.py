@@ -187,6 +187,24 @@ class Table(unittest.TestCase):
         self.assertEqual(effect_names.by_file("C.ZD2"), NEW)
         self.assertFalse(effect_names.described("A.ZD2", None))
 
+    def test_an_effect_read_before_the_custom_effects_moved_category_is_read_again(self):
+        """On 2026-10-30 the custom effects left SFX for their own categories at the same size: what
+        was read of them before is taken until the next Read Pedal reads their files again."""
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        cache = Path(folder.name, "pedal_effects.json")
+        older = {"id": "09000FA0", "name": "C", "knobs": [["Tone", 100]], "size": 5, "dsp": 10.0}
+        cache.write_text(json.dumps({"C.ZD2": older}), encoding="utf-8")
+        effect_names.use_cache(cache)
+        self.assertEqual(effect_names.by_file("C.ZD2"), NEW)                # taken meanwhile
+        self.assertFalse(effect_names.described("C.ZD2", 5))                # … and read again
+        effect_names.remember([{"id": 0x08000FA0, "name": "C", "knobs": [["Tone", 100]], "file": "C.ZD2",
+                                "size": 5, "dsp": 10.0}])
+        self.assertTrue(effect_names.described("C.ZD2", 5))
+        effect_names.use_cache(cache)                                       # the next start
+        self.assertTrue(effect_names.described("C.ZD2", 5))
+        self.assertEqual(effect_names.by_file("C.ZD2"), 0x08000FA0)
+
     def test_a_synth_effect_is_played_as_the_build_read_from_the_next_start(self):
         knobs = [["Key", 1000], ["Level", 100], ["Wave1", 3], ["Wave2", 4]]
         self.addCleanup(zs.use_installed_synths)
@@ -259,7 +277,7 @@ class Reading(ReadingCase):
         self.assertEqual(self.world.file_log[-2:], ["60214000000000", "6009"])    # the file session ended
         self.assertEqual(self.kept()["NEWFX.ZD2"], {"id": f"{NEW:08X}", "name": "NewFx",
                                                     "knobs": [["Tone", 100], ["Drive", 50]], "size": 4400,
-                                                    "dsp": None})        # its file declares none
+                                                    "dsp": None, "since": effect_names.READ_SINCE})   # no DSP in its file
 
     def test_its_knobs_have_their_names_in_the_interface(self):
         self.read()

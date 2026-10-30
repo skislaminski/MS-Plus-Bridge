@@ -118,14 +118,14 @@ class Changing(SimulatedCase):
                           ("Reverb", "BrghtRoom")])      # a custom effect where it is installed, as on the pedal
 
     def test_a_custom_effect_reported_under_two_ids_is_offered_once(self):
-        """A preset made with an older build of KeyWave reported it as 07000F7C (Pitch shift), the
-        table has it as 09000F7C (SFX): the pedal lists it once, so the choices do."""
-        older, keywave = 0x07000F7C, 0x09000F7C
+        """A preset made before KeyWave was moved reported it as 09000F7C (SFX), the table has it as
+        08000F7C (Synth, since 2026-10-30): the pedal lists it once, so the choices do."""
+        older, keywave = 0x09000F7C, 0x08000F7C
         choices = lambda *effects: [(choice["group"], choice["name"], choice["id"])
                                     for choice in bridge.effect_choices(frozenset(effects))]
         self.assertEqual(choices(older, keywave, STOCK),
-                         [("Dynamics", "BlackOpt", "01000020"), ("SFX", "KeyWave", "09000F7C")])
-        self.assertEqual(choices(older), [("Pitch shift", "KeyWave", "07000F7C")])   # the only id of it there is
+                         [("Dynamics", "BlackOpt", "01000020"), ("Synth", "KeyWave", "08000F7C")])
+        self.assertEqual(choices(older), [("SFX", "KeyWave", "09000F7C")])   # the only id of it there is
 
     def test_an_effect_the_pedal_did_not_take_is_said(self):
         world = World(chain=[STOCK, CHORUS], length=2.0)

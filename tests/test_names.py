@@ -91,6 +91,13 @@ class Table(unittest.TestCase):
             self.assertEqual(effect_names.effect(0x07000F61)["name"], "KeySynth")
             self.assertIsNone(effect_names.effect(0x05000020))             # two have …020: neither is meant
 
+    def test_a_custom_effect_moved_to_another_category_keeps_what_was_assigned_to_it(self):
+        self.assertTrue(bridge.same_effect(0x09000F8D, 0x08000F8D))        # Drone, SFX → Synth (2026-10-30)
+        self.assertEqual(bridge.place_of(1, 0x09000F8D, [0x01000020, 0x08000F8D]), 1)
+        self.assertFalse(bridge.same_effect(0x01000020, 0x0A000020))       # BlackOpt is no AnalogDly
+        self.assertFalse(bridge.same_effect(0x09000F8D, 0x08000F8F))
+        self.assertFalse(bridge.same_effect(0, 0))
+
     def test_the_table_of_the_pedal_knows_its_effects(self):
         self.assertEqual(effect_names.effect(0x0A000020)["name"], "AnalogDly")
         self.assertEqual([knob["name"] for knob in effect_names.knobs(0x0A000020)], ["Time", "Mode", "Repeat", "Mix"])
