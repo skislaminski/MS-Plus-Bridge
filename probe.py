@@ -8,6 +8,7 @@
   python probe.py verify     cross-check: send exactly one measured value back
   python probe.py program    query the current bank/program
   python probe.py approve    show or grant approvals
+  python probe.py setup      what is still missing for the first start: identity and approvals
 
   python probe.py --profile NAME <command>
                              the same for a second bridge, whose settings are in profiles/NAME/
@@ -25,6 +26,7 @@ import mido
 import yaml
 
 import zoom_sysex as zs
+from bridge import REQUIRED_KINDS, set_config_values
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = ROOT / "config.yaml"
@@ -174,8 +176,36 @@ def cmd_identity(args) -> None:
         identity = zoom.identify(check=False)
     print(f"\nDevice ID {identity.device_id:02X}, family {zs.to_hex(identity.family)}, "
           f"model {zs.to_hex(identity.model)}, firmware {identity.version}")
-    print(f"→ config.yaml: zoom.device_id: 0x{identity.device_id:02X}, "
+    CONFIG.write_text(set_config_values(CONFIG.read_text(encoding="utf-8"), {
+        ("zoom", "device_id"): identity.device_id, ("zoom", "firmware"): identity.version}), encoding="utf-8")
+    print(f"→ entered in {CONFIG.name}: zoom.device_id: {identity.device_id} (0x{identity.device_id:02X}), "
           f"zoom.firmware: \"{identity.version}\"")
+
+
+# --- setup ---
+
+def cmd_setup(args) -> None:
+    """What the bridge needs before it starts, asked for in the terminal; what is done is skipped."""
+    if load_config()["zoom"]["device_id"] is None:
+        cmd_identity(args)
+    approvals = zs.Approvals(APPROVALS)
+    missing = [kind for kind in zs.KINDS if not approvals.is_approved(kind)]
+    if approvals.backup_confirmed and not missing:
+        return
+    if not sys.stdin.isatty():
+        sys.exit("Approval missing – grant it with: python probe.py approve "
+                 + " ".join(([] if approvals.backup_confirmed else ["backup"]) + missing))
+    if not approvals.backup_confirmed:
+        if not ask("Are the patches of the MS-60B+ backed up?"):
+            sys.exit("Cancelled – back them up with Zoom's software first.")
+        approvals.confirm_backup()
+    print("\nThe bridge sends only the kinds of message you approve. Approve what it may do:")
+    for kind in missing:
+        required = kind in REQUIRED_KINDS
+        if ask(f"\n{kind}{' (needed to start)' if required else ''}: {zs.KINDS[kind]}\n  Approve?"):
+            approvals.approve(kind)
+        elif required:
+            sys.exit(f"Cancelled – the bridge cannot start without {kind}.")
 
 
 # --- cc ---
@@ -423,6 +453,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("ports").set_defaults(run=cmd_ports)
     sub.add_parser("identity").set_defaults(run=cmd_identity)
+    sub.add_parser("setup").set_defaults(run=cmd_setup)
     cc = sub.add_parser("cc")
     cc.add_argument("--rest", type=float, default=5, help="seconds per at-rest measurement")
     cc.add_argument("--sweep", type=float, default=8, help="seconds for the sweep")

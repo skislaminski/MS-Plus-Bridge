@@ -4797,6 +4797,10 @@ def main(argv: Optional[list] = None) -> None:
         return
     if args.profile is not None:
         use_profile(args.profile)
+    if argv is None and sys.stdin.isatty():   # started in a terminal: first ask for what is still missing
+        profile = [] if args.profile is None else ["--profile", args.profile]
+        if subprocess.run([sys.executable, str(ROOT / "probe.py"), *profile, "setup"]).returncode:
+            sys.exit(1)
     bridge = Bridge()
     zs.setup_logging(HOME / "logs", console=False)
     if not args.no_ui:

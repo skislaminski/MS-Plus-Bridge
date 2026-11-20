@@ -190,6 +190,12 @@ launchers for macOS and Windows).
 This is needed once per computer. Connect the controller and the MS-60B+ by USB first. The
 values go into `config.yaml`, a plain text file you can edit with any text editor.
 
+Started in a terminal (every launcher does that), the bridge first runs `probe.py setup`: it does
+steps 1, 2 and 4 by itself – creates `config.yaml`, identifies the pedal and enters its id, and asks
+for the backup confirmation and each message kind, the five the bridge needs and the optional
+ones. Only step 3 (a foot controller) is left to do by hand. The bridge reads approvals when it
+starts: one granted later with `probe.py approve` takes effect at the next start.
+
 1. List the MIDI ports. On the first run this creates `config.yaml` from the example.
 
    ```bash
@@ -205,7 +211,7 @@ values go into `config.yaml`, a plain text file you can edit with any text edito
    .venv/bin/python probe.py identity
    ```
 
-   Enter the reported `device_id` and `firmware` in `config.yaml`.
+   It enters the reported `device_id` and `firmware` in `config.yaml`.
 
 3. Measure the expression pedal. This sends nothing to the MS-60B+. (No foot controller, only a
    keyboard or nothing but the pedal? Leave `chocolate:` under `ports:` empty and skip this step.)

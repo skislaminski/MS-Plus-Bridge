@@ -28,16 +28,20 @@ browser at `http://127.0.0.1:8765`.
 
 ## 2. Set it up once
 
-In a terminal in the folder (Windows: `.venv\Scripts\python` instead of `.venv/bin/python`):
+The first start does this in its terminal window: it creates `config.yaml`, asks the pedal for its
+device id and enters it, asks you to confirm your backup, and then asks which kinds of message the
+bridge may send. Each is shown as hex; the first five are needed to start, the others switch on
+editing, saving and reading the pedal in the interface. Answer `y` + Enter to approve.
+
+Approved something later with `probe.py approve`? Start the bridge again to use it.
+
+With a foot controller, also enter its port under `ports:` in `config.yaml` and measure its pedal
+(in a terminal in the folder; Windows: `.venv\Scripts\python` instead of `.venv/bin/python`):
 
 ```bash
-.venv/bin/python probe.py ports        # which MIDI ports there are; enter yours in config.yaml
-.venv/bin/python probe.py identity     # the pedal's device id (asks you to confirm your backup)
+.venv/bin/python probe.py ports        # which MIDI ports there are
 .venv/bin/python probe.py cc           # move the expression pedal: its CC and range
-.venv/bin/python probe.py approve edit_enable edit_disable set_param query_program
 ```
-
-Without a foot controller, leave `chocolate:` in `config.yaml` empty and skip `probe.py cc`.
 
 ## 3. Play
 

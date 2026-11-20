@@ -7,7 +7,7 @@ from unittest import mock
 
 import probe
 import zoom_sysex as zs
-from tests.sim import SimulatedCase, World
+from tests.sim import PROJECT, SimulatedCase, World
 
 IDENTITY, ENABLE, DISABLE, QUERY = ("F0 7E 7F 06 01 F7", "F0 52 00 6E 50 F7",
                                     "F0 52 00 6E 51 F7", "F0 52 00 6E 33 F7")
@@ -41,6 +41,27 @@ class Probe(SimulatedCase):
         self.assertEqual(sent, [IDENTITY])
         self.assertIn("Device ID 6E", self.output)
         self.assertIn("firmware 1.20", self.output)
+
+    def test_identity_enters_the_device_in_config_yaml(self):
+        probe.CONFIG.write_text((PROJECT / "config.example.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+        self.command(World(length=FOREVER), probe.cmd_identity)
+        text = probe.CONFIG.read_text(encoding="utf-8")
+        self.assertEqual(probe.yaml.safe_load(text)["zoom"], {"device_id": 0x6E, "firmware": "1.20"})
+        self.assertIn("# e.g. 0x6E", text)                                    # the comments stay
+
+    def test_setup_identifies_then_asks_for_the_missing_approvals(self):
+        probe.CONFIG.write_text((PROJECT / "config.example.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+        world = World(length=FOREVER)
+        with self.assertRaises(SystemExit) as refused:
+            self.command(world, probe.cmd_setup)
+        self.assertEqual([text for _, text in world.sent], [IDENTITY])
+        self.assertEqual(probe.yaml.safe_load(probe.CONFIG.read_text(encoding="utf-8"))["zoom"]["device_id"], 0x6E)
+        self.assertRegex(str(refused.exception), r"python probe.py approve .*read_pedal")   # not a terminal: no questions
+
+    def test_setup_does_nothing_when_all_is_set_up(self):
+        self.approve(*zs.KINDS)
+        world = World(length=FOREVER)
+        self.assertEqual(self.command(world, probe.cmd_setup), [])
 
     def test_learn_records_the_range_for_the_current_preset(self):
         turn = [(0.1 + 0.01 * i, lambda world, value=value: world.knob(2, 3, value))
