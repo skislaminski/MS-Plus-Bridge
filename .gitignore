@@ -11,3 +11,7 @@ pedal_effects.json
 MS Plus Bridge.app/
 Expression Bridge.app/
 .DS_Store
+
+# Kept here, not published
+NOTES.md
+tests/files/

@@ -1490,7 +1490,7 @@ hardware as well.
 | `Write Pi Card.command` | macOS: writes the bridge and its settings onto the Pi's SD card (`export.py`) |
 | `probe.py` | Setup and exploration: ports, identity, CC measurement, learn, verify, approvals |
 | `config.example.yaml` | Template for `config.yaml` |
-| `tests/` | Tests against simulated devices (`sim.py` is the simulated pedal and controller; `files/` a real KeySynth build to read) |
+| `tests/` | Tests against simulated devices (`sim.py` is the simulated pedal and controller) |
 | `Start Bridge.command` | macOS launcher: sets up the environment if needed, makes the clickable app and starts the bridge |
 | `Start Bridge.bat` | The same for Windows, without the app (untested) |
 | `Start Bridge.sh` | The same for Linux (untested) |
@@ -1498,7 +1498,6 @@ hardware as well.
 | `tools/value_labels/` | Maintenance: the texts of Zoom's own effects' values, read from their code into `zoom_effects.json` |
 | `QUICKSTART.md` | The short way to a running bridge |
 | `docs/ms-plus-bridge.png` | The picture at the top (also for GitHub's social preview, 1280 × 640) |
-| `NOTES.md` | Development notes (German) |
 
 Created locally and not part of the repository: `config.yaml`, `approvals.json`,
 `measurements.json`, `controls.json`, `pedal_effects.json`, `logs/sysex.log`, `MS Plus Bridge.app`, and the same

@@ -41,7 +41,10 @@ def with_dsp(data: bytes, load: float) -> bytes:
 
 class Files(unittest.TestCase):
     def test_a_real_keysynth_declares_52(self):
-        data = (PROJECT / "tests" / "files" / "KEYSYNTH.ZD2").read_bytes()      # KeySynth 1.10, a real build
+        path = PROJECT / "tests" / "files" / "KEYSYNTH.ZD2"                     # KeySynth 1.10, a real build
+        if not path.exists():                                                    # not published with the bridge
+            self.skipTest("tests/files/KEYSYNTH.ZD2 is not here")
+        data = path.read_bytes()
         self.assertEqual(effect_names.read_zd2(data)["dsp"], 52.0)
         done = next(effect for size in range(512, len(data) + 512, 512)
                     for known, effect in [effect_names.read_zd2_part(data[:size])] if known)
