@@ -24,7 +24,8 @@ Download this repository (green **Code** button → **Download ZIP**) and unpack
 | Linux | Run `./Start Bridge.sh` in a terminal |
 
 The first start sets up the Python environment by itself (a minute). The interface opens in the
-browser at `http://127.0.0.1:8765`.
+browser at `http://127.0.0.1:8765`, with the tabs **Bridge**, **Installer**, **IR Loader**,
+**KeyWave** and **NAM**.
 
 ## 2. Set it up once
 

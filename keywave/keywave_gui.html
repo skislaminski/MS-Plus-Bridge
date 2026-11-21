@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KeyWave Tables</title>
+<style>
+:root {
+  --bg: #f4f2ee; --card: #ffffff; --ink: #1d1c1a; --muted: #6b6760; --line: #e2ded6;
+  --accent: #1f6f8b; --accent-ink: #ffffff; --wave: #1f6f8b; --wave2: #c9852b; --soft: #eef4f6;
+  --bad: #b3261e; --good: #2e7d32; --key: #faf9f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --card: #20201e; --ink: #ecebe7; --muted: #a29e96; --line: #34332f;
+    --accent: #5fb3cf; --accent-ink: #0e1a1f; --wave: #5fb3cf; --wave2: #e0a552; --soft: #1b2a30;
+    --bad: #f08a80; --good: #81c784; --key: #2a2a27;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+main { max-width: 900px; margin: 0 auto; padding: 22px 18px 40px; }
+h1 { font-size: 22px; margin: 0 0 2px; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+h2 { font-size: 15px; margin: 0 0 12px; display: flex; gap: 10px; align-items: center; }
+h2 .n { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+        display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px; text-align: center; cursor: pointer;
+        color: var(--muted); transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--soft); color: var(--ink); }
+.drop b { color: var(--ink); }
+.row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-top: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+button, select, input[type=text] { font: inherit; color: var(--ink); }
+.chip { border: 1px solid var(--line); background: var(--key); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); }
+label.opt { color: var(--muted); display: inline-flex; gap: 8px; align-items: center; }
+select, input[type=text] { background: var(--key); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+.info { color: var(--muted); font-size: 13px; margin-top: 10px; min-height: 1.3em; }
+.err { color: var(--bad); }
+canvas { display: block; width: 100%; }
+#big { height: 170px; background: var(--soft); border-radius: 8px; }
+.thumbs { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-top: 8px; }
+.thumbs canvas { height: 44px; background: var(--soft); border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+.thumbs canvas.on { border-color: var(--accent); }
+input[type=range] { accent-color: var(--accent); }
+.wave { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+.wave input { flex: 1; }
+.num { font-variant-numeric: tabular-nums; min-width: 2.5em; text-align: right; }
+.keys { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-top: 12px; }
+.key { background: var(--key); border: 1px solid var(--line); border-radius: 8px; padding: 10px 0 8px; cursor: pointer;
+       user-select: none; -webkit-user-select: none; text-align: center; }
+.key small { display: block; color: var(--muted); font-size: 11px; }
+.key.down { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.key.down small { color: var(--accent-ink); }
+.hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+.primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 8px 16px; cursor: pointer; font-weight: 600; }
+.primary:disabled { opacity: .45; cursor: default; }
+.link { background: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.result { margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: var(--soft); display: none; }
+.result code { font-size: 13px; word-break: break-all; }
+ol { margin: 8px 0 0; padding-left: 20px; }
+li { margin: 3px 0; }
+.dis { opacity: .5; pointer-events: none; }
+@media (max-width: 600px) { .thumbs, .keys { grid-template-columns: repeat(4, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <h1>KeyWave Tables</h1>
+  <p class="sub">A new wavetable for the KeyWave effect. You get <b>KEYWAVE.ZD2</b> and <b>KEYWAVE.ZIC</b>, to install with stomphacks.</p>
+
+  <section>
+    <h2><span class="n">1</span>Load a wavetable</h2>
+    <div class="drop" id="drop" tabindex="0">
+      <b>Drop a WAV file here</b> or click to choose one<br>
+      <span style="font-size:13px">a wavetable (laid out like Serum, Vital or WaveEdit files) or a single cycle; a KEYWAVE.ZD2 also works, to see which table is in it</span>
+    </div>
+    <input type="file" id="file" accept=".wav,.WAV,.zd2,.ZD2" hidden>
+    <div class="row">
+      <div class="chips" id="examples"></div>
+    </div>
+    <div class="row">
+      <label class="opt">Frame length
+        <select id="flen">
+          <option value="auto">automatic</option>
+          <option>256</option><option>512</option><option>1024</option><option>2048</option><option>4096</option>
+        </select>
+      </label>
+      <label class="opt">Normalize
+        <select id="norm">
+          <option value="table">whole table to full level</option>
+          <option value="frame">each frame to full level</option>
+          <option value="none">off (level as in the file)</option>
+        </select>
+      </label>
+    </div>
+    <div class="info" id="info">Nothing loaded yet.</div>
+  </section>
+
+  <section id="s2" class="dis">
+    <h2><span class="n">2</span>Listen</h2>
+    <canvas id="big"></canvas>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="wave">
+      <label class="opt" for="wave">Wave</label>
+      <input type="range" id="wave" min="0" max="100" value="0">
+      <span class="num" id="waveNum">0</span>
+    </div>
+    <div class="keys" id="keys"></div>
+    <div class="wave">
+      <label class="opt" for="vol">Volume</label>
+      <input type="range" id="vol" min="0" max="100" value="40">
+    </div>
+    <p class="hint">Hold a key down to play, or use the keys A S D F G H J K on your keyboard. As in the effect, Wave moves through the 8 frames and crossfades between them. This is only a preview on your computer: envelope, Sub, LFO and Glide come from the effect itself.</p>
+  </section>
+
+  <section id="s3" class="dis">
+    <h2><span class="n">3</span>Make the effect</h2>
+    <div class="row" style="margin-top:0">
+      <label class="opt">Table name <input type="text" id="name" maxlength="24" size="22"></label>
+      <button class="primary" id="build" disabled>Make KEYWAVE.ZD2</button>
+    </div>
+    <div class="info" id="buildInfo"></div>
+    <div class="result" id="result">
+      <div>Written to <code id="folder"></code></div>
+      <div class="row" style="margin-top:8px"><button class="link" id="reveal">Show in Finder</button>
+        <button class="link" id="send" hidden>Send to the installer</button></div>
+      <div style="margin-top:10px"><b>How to get the table onto the pedal</b> (same file name and same ID as the KeyWave that is already on it):</div>
+      <ol>
+        <li>Back up the pedal (stomphacks: <code>backup_pedal.py</code>).</li>
+        <li>Take KeyWave out of all patches.</li>
+        <li>Remove the old KeyWave: <code>pedal_diy.py uninstall</code> with this KEYWAVE.ZD2.</li>
+        <li>Install the new <b>KEYWAVE.ZD2</b> from this folder (the .ZIC next to it belongs to it).</li>
+        <li>Try it in an unsaved patch first, with AUTO SAVE off.</li>
+      </ol>
+      <div class="hint">Saved knob settings still work: the knobs and the ID stay the same, only the table is new.</div>
+    </div>
+  </section>
+</main>
+<script>
+"use strict";
+const BASE = location.pathname.endsWith("/") ? location.pathname : location.pathname + "/";
+const $ = (id) => document.getElementById(id);
+let cur = null;          // {id, frames, info, name}: the table shown, the one Make writes
+let src = null;          // {kind: "file", file, b64, named} or {kind: "example", name, named}
+let loadSeq = 0;         // the newest load; an answer to an older one is dropped
+let pickSeq = 0;         // the newest file or example chosen; a file read that ends later is dropped
+let loading = false, building = false;
+const PAGE = Math.random().toString(36).slice(2, 12);    // this page, for the server (see api/bye)
+const MAX_FILE = 48 * 1024 * 1024;     // the server takes 64 MB, as base64
+const NOTES = [["E1", 28], ["A1", 33], ["D2", 38], ["G2", 43], ["C3", 48], ["E3", 52], ["A3", 57], ["C4", 60]];
+const KEYS = "asdfghjk";
+
+async function api(path, body) {
+  const r = await fetch(BASE + path, body === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json();
+}
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function say(id, text, bad) { const e = $(id); e.textContent = text; e.classList.toggle("err", !!bad); }
+
+function count(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+
+// ---- loading ------------------------------------------------------------
+
+function toB64(buf) {
+  const bytes = new Uint8Array(buf); let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+function canBuild() { $("build").disabled = !cur || loading || building; }
+
+async function load() {
+  const s = src;
+  if (!s) return;
+  const my = ++loadSeq;
+  loading = true; canBuild();               // Make waits for the table the controls now ask for
+  say("info", "Reading …");
+  $("result").style.display = "none"; say("buildInfo", "");
+  const opts = {frame_len: $("flen").value, normalize: $("norm").value};
+  let res;
+  try {
+    res = s.kind === "file" ? await api("api/load", Object.assign({file: s.file, data: s.b64}, opts))
+                            : await api("api/example", Object.assign({name: s.name}, opts));
+  } catch (e) { res = {ok: false, error: String(e)}; }
+  if (my !== loadSeq) return;               // a newer load is under way: only its answer counts
+  loading = false;
+  if (!res.ok) {
+    // the controls no longer match the table loaded before: it is neither played nor written
+    cur = null; noteOff(); canBuild();
+    $("s2").classList.add("dis"); $("s3").classList.add("dis");
+    say("info", res.error || "That did not work.", true);
+    return;
+  }
+  cur = res;
+  const i = res.info;
+  const what = s.kind === "file" ? s.file : res.name;
+  say("info", i.zd2
+    ? `${what}: table “${res.name}” from the effect (8 frames).`
+    : `${what}: ${i.source_format}, ${count(i.source_frames, "frame")} of ${i.source_frame_len} samples (${i.frame_len_how})` +
+      (i.dropped_samples ? `, ${count(i.dropped_samples, "sample")} left over at the end` : "") +
+      (i.source_frames === 1
+        ? ". All 8 frames of the effect are this one cycle."
+        : `. 8 frames go into the effect, taken at ${i.taken_at.map(x => +(+x).toFixed(2)).join(", ")}` +
+          (i.source_frames < 8 ? " (the frames in between are crossfaded)" : "") + "."));
+  if (!s.named) { $("name").value = res.name; s.named = true; }   // a reload keeps a name the user typed
+  $("s2").classList.remove("dis"); $("s3").classList.remove("dis");
+  canBuild();
+  makeWaves(); draw(); updateVoice();
+}
+
+function takeFile(f) {
+  if (!f) return;
+  const my = ++pickSeq;
+  if (f.size > MAX_FILE) {
+    say("info", `${f.name} is too large for a wavetable (${Math.round(f.size / 1048576)} MB; at most 48 MB).`, true);
+    return;
+  }
+  const rd = new FileReader();
+  rd.onload = () => {
+    if (my !== pickSeq) return;             // another file or example was chosen meanwhile
+    try { src = {kind: "file", file: f.name, b64: toB64(rd.result), named: false}; }
+    catch (e) { say("info", `Could not read ${f.name}: ${e}`, true); return; }
+    load();
+  };
+  rd.onerror = () => { if (my === pickSeq) say("info", "Could not read the file.", true); };
+  rd.readAsArrayBuffer(f);
+}
+
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") $("file").click(); };
+$("file").onchange = (e) => takeFile(e.target.files[0]);
+["dragenter", "dragover"].forEach(t => window.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => window.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+window.addEventListener("drop", (e) => takeFile(e.dataTransfer.files[0]));
+$("flen").onchange = () => load(); $("norm").onchange = () => load();
+
+// ---- drawing ------------------------------------------------------------
+
+function sizeCanvas(c) {
+  const r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  c.width = Math.max(1, Math.round(r.width * d)); c.height = Math.max(1, Math.round(r.height * d));
+  const g = c.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0); return [g, r.width, r.height];
+}
+
+function plot(g, w, h, wave, color, lw) {
+  g.strokeStyle = color; g.lineWidth = lw; g.beginPath();
+  const n = wave.length;
+  for (let i = 0; i <= n; i++) {
+    const x = i / n * w, y = h / 2 - wave[i % n] * (h / 2 - 4);
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+}
+
+function position() { return $("wave").value / 100 * 7; }
+
+function blended() {
+  const p = position(), a = Math.min(Math.floor(p), 6), f = p - a;
+  const A = cur.frames[a].wave, B = cur.frames[a + 1].wave;
+  return A.map((v, i) => (1 - f) * v + f * B[i]);
+}
+
+function draw() {
+  if (!cur) return;
+  const [g, w, h] = sizeCanvas($("big"));
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = css("--line"); g.lineWidth = 1; g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
+  plot(g, w, h, blended(), css("--wave"), 2);
+  const th = $("thumbs");
+  if (th.children.length !== 8) {
+    th.innerHTML = "";
+    for (let k = 0; k < 8; k++) {
+      const c = document.createElement("canvas"); c.title = "Frame " + (k + 1);
+      c.onclick = () => { $("wave").value = Math.round(k / 7 * 100); onWave(); };
+      th.appendChild(c);
+    }
+  }
+  const p = position();
+  [...th.children].forEach((c, k) => {
+    const [tg, tw, thh] = sizeCanvas(c); tg.clearRect(0, 0, tw, thh);
+    plot(tg, tw, thh, cur.frames[k].wave, Math.abs(p - k) < 1 ? css("--wave") : css("--muted"), 1.2);
+    c.classList.toggle("on", Math.abs(p - k) < 0.5);
+  });
+}
+window.addEventListener("resize", draw);
+
+function onWave() { $("waveNum").textContent = $("wave").value; draw(); updateVoice(); }
+$("wave").oninput = onWave;
+
+// ---- sound --------------------------------------------------------------
+
+let ac = null, master = null, waves = [], voice = null;
+
+function audio() {
+  if (!ac) {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    master = ac.createGain(); master.connect(ac.destination);
+  }
+  master.gain.value = $("vol").value / 100 * 0.35;
+  if (ac.state === "suspended") ac.resume();
+  if (cur && waves.length !== 8) makeWaves();
+  return ac;
+}
+$("vol").oninput = () => { if (master) master.gain.setTargetAtTime($("vol").value / 100 * 0.35, ac.currentTime, 0.02); };
+
+function makeWaves() {
+  if (!ac || !cur) return;
+  waves = cur.frames.map(fr => {
+    const re = new Float32Array(fr.cos.length + 1), im = new Float32Array(fr.sin.length + 1);
+    fr.cos.forEach((v, k) => re[k + 1] = v); fr.sin.forEach((v, k) => im[k + 1] = v);
+    return ac.createPeriodicWave(re, im, {disableNormalization: true});
+  });
+  if (voice) { voice.a = -1; updateVoice(); }
+}
+
+function updateVoice() {
+  if (!voice || !waves.length) return;
+  const p = position(), a = Math.min(Math.floor(p), 6), f = p - a, t = ac.currentTime;
+  if (voice.a !== a) { voice.oA.setPeriodicWave(waves[a]); voice.oB.setPeriodicWave(waves[a + 1]); voice.a = a; }
+  voice.gA.gain.setTargetAtTime(1 - f, t, 0.01); voice.gB.gain.setTargetAtTime(f, t, 0.01);
+}
+
+function noteOn(midi) {
+  if (!cur) return;
+  audio();
+  const hz = 440 * Math.pow(2, (midi - 69) / 12), t = ac.currentTime;
+  if (voice) { voice.oA.frequency.setTargetAtTime(hz, t, 0.004); voice.oB.frequency.setTargetAtTime(hz, t, 0.004);
+               voice.env.gain.cancelScheduledValues(t); voice.env.gain.setTargetAtTime(1, t, 0.003); voice.midi = midi; return; }
+  const v = {oA: ac.createOscillator(), oB: ac.createOscillator(), gA: ac.createGain(), gB: ac.createGain(),
+             env: ac.createGain(), a: -1, midi};
+  v.oA.frequency.value = v.oB.frequency.value = hz;
+  v.oA.connect(v.gA); v.oB.connect(v.gB); v.gA.connect(v.env); v.gB.connect(v.env); v.env.connect(master);
+  v.env.gain.setValueAtTime(0, t); v.env.gain.setTargetAtTime(1, t, 0.003);
+  voice = v; updateVoice();
+  v.oA.start(t); v.oB.start(t);
+}
+
+function noteOff(midi) {
+  if (!voice || (midi !== undefined && voice.midi !== midi)) return;
+  const v = voice, t = ac.currentTime;
+  v.env.gain.cancelScheduledValues(t); v.env.gain.setTargetAtTime(0, t, 0.05);
+  v.oA.stop(t + 0.4); v.oB.stop(t + 0.4);
+  voice = null;
+  document.querySelectorAll(".key.down").forEach(k => k.classList.remove("down"));
+}
+
+NOTES.forEach(([label, midi], i) => {
+  const k = document.createElement("div"); k.className = "key"; k.id = "key" + i;
+  k.innerHTML = `${label}<small>${KEYS[i].toUpperCase()}</small>`;
+  const on = (e) => { e.preventDefault(); document.querySelectorAll(".key.down").forEach(x => x.classList.remove("down"));
+                      k.classList.add("down"); noteOn(midi); };
+  const off = (e) => { e.preventDefault(); k.classList.remove("down"); noteOff(midi); };
+  k.addEventListener("pointerdown", on); k.addEventListener("pointerup", off); k.addEventListener("pointerleave", off);
+  $("keys").appendChild(k);
+});
+function noteKey(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return -1;        // shortcuts (Cmd+A, Ctrl+F ...) are no notes
+  if (e.target && e.target.type === "text") return -1;      // typing the table's name
+  return KEYS.indexOf(String(e.key).toLowerCase());
+}
+window.addEventListener("keydown", (e) => {
+  const i = noteKey(e); if (i < 0) return;
+  e.preventDefault();                       // a focused list would jump to the entry with that letter
+  if (e.repeat || !cur) return;
+  document.querySelectorAll(".key.down").forEach(x => x.classList.remove("down"));
+  $("key" + i).classList.add("down"); noteOn(NOTES[i][1]);
+});
+window.addEventListener("keyup", (e) => {
+  const i = KEYS.indexOf(String(e.key).toLowerCase()); if (i < 0) return;
+  $("key" + i).classList.remove("down"); noteOff(NOTES[i][1]);
+});
+// a key that is let go in another window never comes back here as keyup
+window.addEventListener("blur", () => noteOff());
+document.addEventListener("visibilitychange", () => { if (document.hidden) noteOff(); });
+
+// ---- building -----------------------------------------------------------
+
+let lastFile = null;
+$("build").onclick = async () => {
+  if (!cur || loading || building) return;
+  const seq = loadSeq;
+  building = true; canBuild(); say("buildInfo", "Writing …"); $("result").style.display = "none";
+  let res;
+  try { res = await api("api/build", {id: cur.id, name: $("name").value}); }
+  catch (e) { res = {ok: false, error: String(e)}; }
+  building = false; canBuild();
+  if (!res.ok) { say("buildInfo", res.error || "That did not work.", true); return; }
+  if (seq !== loadSeq) {                    // the settings were changed while it was written
+    say("buildInfo", "Written to " + res.folder + ", but with the table from before your last change. " +
+                     "Click Make again for the table shown now.");
+    return;
+  }
+  say("buildInfo", "Done. Checksum of the file (SHA-256, first digits): " + res.sha);
+  $("folder").textContent = res.folder; lastFile = res.file;
+  $("result").style.display = "block";
+};
+$("reveal").onclick = () => { if (lastFile) api("api/reveal", {path: lastFile}); };
+// In the MS Plus Bridge (bridge.py --workshop) the Zoom MS Installer runs beside this page and the
+// effect goes into its list; on its own (no installer, state without "installer") the button stays hidden
+$("send").onclick = async () => {
+  if (!lastFile) return;
+  let res;
+  try { res = await api("api/send", {file: lastFile}); }
+  catch (e) { res = {ok: false, error: String(e)}; }
+  say("buildInfo", res.ok ? "In the installer's list: take KeyWave out of all patches, then install it in the Installer tab."
+                          : res.error || "That did not work.", !res.ok);
+};
+
+// ---- start --------------------------------------------------------------
+
+(async () => {
+  const st = await api("api/state?page=" + PAGE);
+  st.examples.forEach(ex => {
+    const b = document.createElement("button"); b.className = "chip"; b.textContent = ex.label;
+    b.onclick = () => { pickSeq++; src = {kind: "example", name: ex.name, named: false}; load(); };
+    $("examples").appendChild(b);
+  });
+  if (st.examples.length) {
+    const l = document.createElement("span"); l.className = "opt"; l.style.color = "var(--muted)"; l.textContent = "Examples:";
+    $("examples").prepend(l);
+  }
+  $("send").hidden = !st.installer;
+  if (st.reveal) $("reveal").textContent = st.reveal;     // Finder on the Mac, Explorer on Windows
+  else $("reveal").style.display = "none";
+  window.keywaveReady = true;
+})();
+// browser mode: the program ends a few seconds after the last open page said bye
+setInterval(() => fetch(BASE + "api/state?page=" + PAGE).catch(() => {}), 5000);
+window.addEventListener("pagehide", () => navigator.sendBeacon && navigator.sendBeacon(BASE + "api/bye?page=" + PAGE));
+</script>
+</body>
+</html>

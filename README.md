@@ -29,6 +29,13 @@ own commands.
 - **On a phone or tablet** – the whole interface in the browser over the WLAN.
 - **Raspberry Pi** – runs without screen, opens its own WLAN for the phone, takes Bluetooth MIDI
   controllers.
+- **Workshop tabs on the computer** – the Zoom MS Installer, the IR Loader, KeyWave Tables and NAM
+  banks. Pick NAM captures and cab IRs from the [TONE3000](https://www.tone3000.com) library, a huge
+  collection of captures and IRs of real gear made by musicians around the world, right in the NAM
+  and IR Loader tabs; you sign in with your TONE3000 account, no key of your own needed. Powered by
+  TONE3000.
+
+  <a href="https://www.tone3000.com"><img src="docs/tone3000-logo.svg" alt="TONE3000" height="24"></a>
 
 ## What you need
 
@@ -47,7 +54,8 @@ Download this repository (green **Code** button → **Download ZIP**), unpack it
 | Windows | double-click `Start Bridge.bat` |
 | Linux | run `./Start Bridge.sh` in a terminal |
 
-The first start sets everything up by itself; the interface opens in your browser. Then connect the
+The first start sets everything up by itself; the interface opens in your browser, with tabs for the
+Zoom MS Installer, the IR Loader, KeyWave Tables and NAM beside the bridge. Then connect the
 pedal once, step by step: **[Quick start](QUICKSTART.md)**.
 
 ## On a phone or tablet
@@ -104,7 +112,11 @@ KeyBand, Pluck**. **The effects are not part of this repository** – they are p
 
 [zoom-explorer](https://github.com/thammer/zoom-explorer) and
 [stomphacks](https://github.com/thammer/stomphacks) by thammer,
-[zoom-zt2](https://github.com/mungewell/zoom-zt2) by mungewell,
+[zoom-zt2](https://github.com/mungewell/zoom-zt2) by mungewell (the Zoom MS Installer builds on these),
+[nam2zoom](nam/LICENSE) by Aleksandar Vukasinovic (NAM),
+[HYBRID IR](https://github.com/Leemuzhko/HYBRID-IR) by Leemuzhko and
+[ZoomMultistompZDL](https://github.com/themanro/ZoomMultistompZDL) by Roman Rusinov (IR Loader),
+[TONE3000](https://www.tone3000.com) for the library of captures and IRs,
 [mido](https://github.com/mido/mido) and [python-rtmidi](https://github.com/SpotlightKid/python-rtmidi).
 
 ## License

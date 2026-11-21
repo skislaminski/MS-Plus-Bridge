@@ -43,6 +43,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.request
 import webbrowser
 from collections import deque
 from dataclasses import asdict, dataclass, replace
@@ -77,6 +78,8 @@ APPROVALS = HOME / "approvals.json"
 MEASUREMENTS = HOME / "measurements.json"
 CONTROLS = HOME / "controls.json"
 EFFECT_CACHE = HOME / "pedal_effects.json"   # effects read from the pedal's own files (effect_names.use_cache)
+# the Zoom MS Installer's folder: while it is open or its alarm is up, the pedal is left to it (installer_holds)
+INSTALLER_DATA = Path(os.path.expanduser("~")) / "Zoom MS Installer"    # (Path.home() fails without a home)
 
 REQUIRED_KINDS = ("identity_request", "edit_enable", "edit_disable", "set_param", "query_program")
 IGNORED_TYPES = ("clock", "active_sensing")
@@ -97,6 +100,7 @@ NO_CONTROLLER_SET_UP = ("No controller set up – the preset can be edited in th
                         "a controller is chosen under Devices")
 RETRY_SECONDS = 2.0        # time between connection attempts
 PORT_CHECK_SECONDS = 1.0   # how often to check that the pedal is still there and which controllers are
+INSTALLER_CHECK_SECONDS = 1.0   # how often to look whether the Zoom MS Installer has the pedal
 REPORT_SECONDS = 5.0       # time between statistics lines while sending
 SNAPSHOT_SECONDS = 0.1     # how often the state for the interface is refreshed
 ACK_TIMEOUT = 0.25         # after this long a value counts as unconfirmed
@@ -913,6 +917,7 @@ class Session:
         self.listing: Optional[list] = None                 # the files of the pedal, while its list is read
         self.read_result: Optional[dict] = None             # what came of the last reading: {"ok", "text"}
         self.preset_data: dict = {}                         # (bank, program) → the patch stored there, as last read
+        self.preset_effects: dict = {}                      # (bank, program) → its effects' ids ("%08X") in chain order
         self.preset_undo: Optional[dict] = None             # the last save: place, what was there, what was sent
         self.effect_change: Optional[dict] = None           # a change or move on its way: kind, phase, slot …
         self.effect_result: Optional[dict] = None           # the last change: {"ok", "text"}, for the interface
@@ -1271,6 +1276,7 @@ class Session:
         place = (bank, program)
         self.preset_names[place] = dump.name
         self.preset_data[place] = data
+        self.preset_effects[place] = [f"{effect.id:08X}" for effect in dump.effects if effect.id]   # 0: empty
         undo = self.preset_undo
         if (undo is not None and undo["place"] == place and self.preset_save is None
                 and _within_length(data) != _within_length(undo["written"])):
@@ -1330,8 +1336,7 @@ class Session:
         more per effect file read); PC mode is always left again."""
         if not self.reading_pedal:
             return "Reading the pedal is not approved (`python probe.py approve read_pedal`)."
-        if (self.effect_change is not None or self.preset_save is not None or self.name_wanted is not None
-                or self.learning is not None):
+        if self.busy() or self.learning is not None:
             return "Something is being changed on the pedal: try again in a moment."
         self.listing, names, ok, problem, read = [], None, False, None, []
         self.sender.listing = True
@@ -1353,6 +1358,8 @@ class Session:
                                     else None, 1.0)
                 if answer is None:
                     raise Disconnected("the pedal stopped answering while its files were listed")
+                if self.bridge.installer:
+                    raise Disconnected("the Zoom MS Installer has the pedal")
                 body = zs.zoom_body(answer, self.device_id)
                 if body[1:2] != b"\x04" or zs.parse_file_entry(body) is None:
                     ok = True                                  # an answer that names no file: the end (as the installer)
@@ -1447,7 +1454,7 @@ class Session:
         read, started = [], time.monotonic()
         try:
             for name, size in batch:
-                if time.monotonic() - started > FILES_READ_SECONDS:
+                if time.monotonic() - started > FILES_READ_SECONDS or self.bridge.installer:
                     break
                 self.bridge._publish()               # the interface sees what is going on meanwhile
                 if size == 0:                        # an empty file (an install broken off): no effect in it
@@ -3042,6 +3049,34 @@ class Session:
                 item.slot, item.param, min(item.min, known.min), max(item.max, known.max))
         self.sender.targets = tuple(widest.values())
 
+    def busy(self) -> bool:
+        """A change is on its way to the pedal: it must not be read or let go of now."""
+        return self.effect_change is not None or self.preset_save is not None or self.name_wanted is not None
+
+
+def installer_holds(folder: Path) -> Optional[str]:
+    """Why the Zoom MS Installer has the pedal now, or None. Its alarm file is there while it
+    writes to the pedal and after a transfer it could not verify; until its rescue clears it the
+    pedal must not be talked to. Its lock file names its address: open if that answers."""
+    try:
+        lock = json.loads((folder / "running.json").read_text(encoding="utf-8"))
+        url = lock["url"]
+        # only the installer on this computer is asked; the one in this program (--workshop) asks for
+        # the pedal for each of its jobs (Bridge.lend)
+        if url.startswith("http://127.0.0.1:") and lock.get("pid") != os.getpid():
+            with urllib.request.urlopen(url + "api/ping", timeout=1.0) as reply:
+                if json.load(reply).get("app") == "Zoom MS Installer":
+                    return "the Zoom MS Installer is open"
+    except Exception:                                    # not there, closed, or something else on its port
+        pass
+    return installer_alarm(folder)
+
+
+def installer_alarm(folder: Path) -> Optional[str]:
+    if os.path.exists(folder / "unresolved.json"):
+        return "the Zoom MS Installer could not verify a transfer – leave the pedal on and run its rescue"
+    return None
+
 
 class Bridge:
     """Configuration, assignments and the current connection. run() runs in the main thread; the
@@ -3062,6 +3097,10 @@ class Bridge:
         self.news = None                                   # there: says whether a stick with other settings is in
         self.fallback = False                              # running with the previous settings file
         self.read_at_start = False                         # the pedal's files were read (or not) at the start
+        self.lease: Optional[str] = None                   # the pedal released for another program (release())
+        self.installer: Optional[str] = None               # why the Zoom MS Installer has it (installer_holds)
+        self.lent: Optional[str] = None                    # lent to a job of the installer in this program (lend())
+        self._lent_to: object = None                       # … which job: only it takes the pedal back
         if self.fixed:
             self.cfg = settings
             self.approvals = cs.Approvals(settings["approvals"])
@@ -3178,6 +3217,9 @@ class Bridge:
         next_try = next_snapshot = next_ports = 0.0
         next_news = time.monotonic() + STICK_SECONDS
         waiting = False
+        self.installer = installer_holds(INSTALLER_DATA)   # before the first connection, not a moment after
+        watching = threading.Event()
+        threading.Thread(target=self._watch_installer, args=(watching,), daemon=True).start()
         try:
             while True:
                 now = time.monotonic()
@@ -3192,13 +3234,20 @@ class Bridge:
                     if self.session is None and now >= next_ports and self.interface:
                         self.port_names = (mido.get_input_names(), mido.get_output_names())
                         next_ports = now + PORT_CHECK_SECONDS
-                    if self.session is not None:
+                    held = self.lease or self.lent or self.installer
+                    if self.session is not None and held and not self.session.busy():
+                        self._let_go(held)
+                    elif self.session is not None:
                         try:
                             self.session.step(now)
                         except (zs.NotAllowed, zs.NotApproved) as error:
                             say(f"WARNING: not sent – {error}")    # a refusal of the allowlist: nothing went out
                         except UserError as error:                 # learned, but not kept (the settings file)
                             say(f"WARNING: {error}")
+                    elif held:
+                        if self.status != f"Pedal released: {held}":     # said once, as a reason comes
+                            say(f"Pedal released: {held}")
+                            self.status = f"Pedal released: {held}"
                     elif now >= next_try:
                         try:
                             self.session = Session(self)
@@ -3228,10 +3277,55 @@ class Bridge:
         except KeyboardInterrupt:
             pass
         finally:
+            watching.set()
             self._close_session()
             self.status = "Stopped"
             self._publish()
             say("Stopped.")
+
+    def _watch_installer(self, stop: threading.Event) -> None:
+        """Beside the loop, which must not wait for an answer: whether the installer has the pedal."""
+        while not stop.wait(INSTALLER_CHECK_SECONDS):
+            self.installer = installer_holds(INSTALLER_DATA)
+
+    def _let_go(self, why: str) -> None:
+        """Closes the session (no note left hanging, edit mode off, ports closed) so that another
+        program can talk to the pedal. Once it is back its effects are read again: they may have changed."""
+        say(f"Pedal released: {why}")
+        self._close_session()
+        self.status = f"Pedal released: {why}"
+        self.read_at_start = False
+
+    def pedal(self, action: str) -> None:
+        """release: the bridge lets go of the pedal for another program (nam2zoom, an editor) until
+        reclaim. Not while a change is on its way to it."""
+        if action == "release":
+            if self.session is not None and self.session.busy():
+                raise UserError("Something is being changed on the pedal: try again in a moment.")
+            self.lease = "for another program"
+            if self.session is not None:
+                self._let_go(self.lease)
+        elif action == "reclaim":
+            self.lease = None
+            say("Pedal taken back")
+        else:
+            raise UserError("Unknown action.")
+
+    def lend(self, owner: object, job: str) -> None:
+        """For a job of the installer in this program (workshop.py): the bridge lets go of the pedal
+        until take_back(owner). Not while a change is on its way to it."""
+        if self.session is not None and self.session.busy():
+            raise UserError("The bridge is changing something on the pedal: try again in a moment.")
+        self.lent, self._lent_to = f"the installer is working ({job})", owner
+        if self.session is not None:
+            self._let_go(self.lent)
+
+    def take_back(self, owner: object) -> None:
+        """The job is over. Its alarm, if it raised one, is on disk now: seen before the next
+        connection, not a moment after it (the watch looks only every INSTALLER_CHECK_SECONDS)."""
+        if self._lent_to is owner:
+            self.lent = self._lent_to = None
+        self.installer = installer_alarm(INSTALLER_DATA)    # fresh: a verified job has removed its marker
 
     def _close_session(self) -> None:
         session, self.session = self.session, None
@@ -3293,6 +3387,7 @@ class Bridge:
         state = {
             "connected": bool(session and session.ready),
             "status": self.status,
+            "lease": self.lease is not None,                 # released with the button: it can be taken back
             "profile": PROFILE,
             "devices": self._devices(),
             "pi_wlan": self._pi_wlan(),                      # the Pi's own WLAN, once a card has been written
@@ -3358,12 +3453,14 @@ class Bridge:
                 "delete": {"approved": self.approvals.is_approved("delete_effect")
                            and self.approvals.is_approved("query_patch")},
             },
-            # the presets of the pedal: choosing one, their names (null: not read), storing the one on it
+            # the presets of the pedal: choosing one, their names (null: not read) and the ids of their
+            # effects in chain order ([]: not read), storing the one on it
             "presets": {
                 "select": bool(self.approvals.is_approved("select_preset")),
                 "save": all(self.approvals.is_approved(kind) for kind in ("save_preset", "query_preset", "query_patch")),
                 "list": [{"bank": bank, "program": program, "display": display((bank, program)),
-                          "name": session.preset_names.get((bank, program)) if session else None}
+                          "name": session.preset_names.get((bank, program)) if session else None,
+                          "effects": session.preset_effects.get((bank, program), []) if session else []}
                          for bank in range(zs.PRESET_BANKS) for program in range(zs.PRESETS_PER_BANK)],
                 "reading": bool(session and (session.preset_queue or session.preset_awaiting)),
                 "busy": bool(session and session.preset_save is not None),
@@ -4786,6 +4883,8 @@ def main(argv: Optional[list] = None) -> None:
                         help="the interface for the network as well (a phone or tablet in the same WLAN; also "
                              "`listen: true` under `ui:` in config.yaml); with --settings, changes made there are "
                              "written into the settings file")
+    parser.add_argument("--workshop", action="store_true",
+                        help="with the Zoom MS Installer as a tab of the interface (installer/, workshop.py)")
     args = parser.parse_args(argv)
 
     zs.tolerant_console()
@@ -4797,18 +4896,54 @@ def main(argv: Optional[list] = None) -> None:
         return
     if args.profile is not None:
         use_profile(args.profile)
-    if argv is None and sys.stdin.isatty():   # started in a terminal: first ask for what is still missing
-        profile = [] if args.profile is None else ["--profile", args.profile]
-        if subprocess.run([sys.executable, str(ROOT / "probe.py"), *profile, "setup"]).returncode:
-            sys.exit(1)
-    bridge = Bridge()
+    workshop = None
+    if args.workshop and not args.no_ui:
+        try:
+            import workshop as installer          # first: it stays when the bridge cannot start
+            workshop = installer.start()
+        except ImportError as error:
+            say(f"The installer cannot be loaded ({error}) – `.venv/bin/python -m pip install construct==2.10.70`")
+        except RuntimeError as error:
+            say(f"The installer is not here: {error}")
+    try:
+        if argv is None and sys.stdin.isatty():   # started in a terminal: first ask for what is still missing
+            profile = [] if args.profile is None else ["--profile", args.profile]
+            if subprocess.run([sys.executable, str(ROOT / "probe.py"), *profile, "setup"]).returncode:
+                if workshop is None:
+                    sys.exit(1)
+                _installer_alone(workshop, "The bridge is not set up yet")    # e.g. its backup comes first
+                return
+        _run(args, workshop)
+    finally:
+        if workshop is not None:
+            workshop.stop()
+
+
+def _installer_alone(workshop, why: str) -> None:
+    """The bridge cannot run (its settings, the pedal's device ID): the installer stays, until Ctrl+C."""
+    say(f"{why} – the installer runs on its own: {workshop.url}")
+    webbrowser.open(workshop.url)
+    try:
+        _wait_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+def _run(args, workshop) -> None:
+    try:
+        bridge = Bridge()
+    except SystemExit as error:
+        if workshop is None:
+            raise
+        _installer_alone(workshop, f"The bridge cannot start: {error}")
+        return
     zs.setup_logging(HOME / "logs", console=False)
     if not args.no_ui:
         import ui
         settings = bridge.cfg.get("ui") or {}
         listen = args.listen or settings.get("listen") is True
         try:
-            address = ui.serve(bridge, settings, listen=listen)
+            address = ui.serve(bridge, settings, listen=listen, workshop=workshop.pages() if workshop else None)
         except OSError as error:                     # two bridges cannot share a port
             port = int(settings.get("port", ui.DEFAULT_PORT))
             running = ui.running_bridge(port)
@@ -4828,7 +4963,19 @@ def main(argv: Optional[list] = None) -> None:
                 + " – everyone in this WLAN can use it")
         if args.open:
             webbrowser.open(f"http://127.0.0.1:{port}" if listen else address)
-    bridge.run()
+    if workshop is not None:
+        with workshop._starting:                     # just before the loop, which serves the job's take_back
+            workshop.bridge = bridge
+            if workshop.job_running():               # started before there was a bridge (during the setup)
+                bridge.lend(workshop._owner, workshop.job["name"])
+    try:
+        bridge.run()
+    except SystemExit as error:
+        if workshop is None:
+            raise
+        with workshop._starting:                     # its loop is over: the installer's jobs need no loan now
+            workshop.bridge = None
+        _installer_alone(workshop, f"The bridge stopped: {error}")
 
 
 if __name__ == "__main__":

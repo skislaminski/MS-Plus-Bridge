@@ -1,0 +1,61 @@
+/* The tabs of the bridge's page (bridge.py --workshop) in the bridge's own look (ui.html): the
+   installer, the N2Z Bank, the IR Loader Tool and KeyWave Tables keep their files as they are, and
+   workshop.py puts this last into the head of each page it serves. Each page's own names for its
+   colours get the bridge's colours, dark whatever the system is set to.
+   :root:root:root outweighs every rule of those pages (the IR Loader's dark colours sit under
+   :root:not([data-theme="light"]), its slot buttons under .slot .acts .btn), so this wins where it speaks. */
+:root:root:root {
+  color-scheme: dark;
+  accent-color: #ee7a24;
+  /* all four */
+  --bg: #151413; --card: #211f1d;
+  --ink: #f3f0e6; --muted: #b7b2a4; --line: rgba(243, 240, 230, .34);
+  --accent: #ee7a24; --accent-ink: #1c0e03;
+  /* the installer and the N2Z Bank (and --warn in the IR Loader) */
+  --field: #0e0d0c; --shadow: none;
+  --ok: #43d15f; --ok-bg: rgba(67, 209, 95, .14);
+  --warn: #f79243; --warn-bg: rgba(238, 122, 36, .16);
+  --err: #ff9a88; --err-bg: rgba(255, 154, 136, .14);
+  /* the IR Loader, whose plots read these */
+  --plot: #ee7a24; --ref: #b7b2a4; --grid: rgba(243, 240, 230, .14);
+  /* KeyWave Tables, whose waves read these and --line, --muted */
+  --wave: #ee7a24; --wave2: #6aa9df; --soft: #0e0d0c; --key: #0e0d0c;
+  --good: #43d15f; --bad: #ff9a88;
+}
+
+/* the frame sits on the bridge's panel, and its content lines up with the bridge's */
+:root:root:root, :root:root:root body { background: #151413; }
+/* inside the bridge's frame: on its panel, and as wide as the bridge's own tabs */
+:root:root:root[data-framed], :root:root:root[data-framed] body { background: transparent; }
+:root:root:root body { font: 14px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+:root:root:root[data-framed] main { max-width: none; margin: 0; padding: 0 0 24px; }
+
+:root:root:root h2 { font-size: 12px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
+:root:root:root h2 a { letter-spacing: normal; text-transform: none; }      /* "Powered by TONE3000" as written */
+:root:root:root :is(section, details, .slot, .tonecard, .tone, .note, .banner, .result, .drop, #drop, #log, #dialog) {
+  border-radius: 4px;
+}
+
+/* buttons are the bridge's rocker switches, white, orange for the one that goes ahead; KeyWave's keys too */
+:root:root:root :is(button, .btn, .key) {
+  font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  border: 1px solid #000; border-radius: 3px; cursor: pointer; white-space: nowrap;
+  color: #16120c; background: linear-gradient(#f7f3e8, #cbc5b3);
+  box-shadow: 0 2px 0 #000, inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+:root:root:root :is(button, .btn) { padding: 6px 10px; }
+:root:root:root .slot .acts :is(button, .btn) { padding: 4px 7px; }          /* three to an IR Loader slot */
+:root:root:root :is(button.primary, .key.down) { background: linear-gradient(#f79243, #d5630f); color: var(--accent-ink); }
+:root:root:root button.danger { color: #b3261e; }
+:root:root:root :is(button, .btn, .key):not(.from *):active:not(:disabled), :root:root:root .key.down {
+  transform: translateY(1px); box-shadow: 0 1px 0 #000;
+}
+:root:root:root :is(button, .btn):disabled { opacity: .4; cursor: default; }
+:root:root:root .key small { color: inherit; opacity: .7; }
+/* a TONE3000 picture that opens its tone stays a picture */
+:root:root:root .from button { padding: 0; border: 0; background: none; box-shadow: none; }
+
+:root:root:root :is(select, textarea, input:not([type=checkbox], [type=radio], [type=range], [type=file])) {
+  border: 1px solid var(--line); border-radius: 3px; background: var(--field); color: var(--ink);
+}
+:root:root:root :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -1,3 +1,4 @@
 mido>=1.3
 python-rtmidi>=1.5
 PyYAML>=6.0
+construct==2.10.70    # the installer tab (installer/zoomzt2.py), the version the Zoom MS Installer uses

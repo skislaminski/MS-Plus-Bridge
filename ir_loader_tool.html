@@ -1,0 +1,1241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IR Loader Tool</title>
+<!-- Source of "IR Loader Tool.html": app/make_tool.py puts the built
+     IRLOADER.ZD2 + .ZIC into BASE_ZD2 / BASE_ZIC below. Nothing here talks
+     to a pedal or to the internet; installing stays with the Zoom MS Installer.
+     Served by that installer (in the MS Plus Bridge, `bridge.py --workshop`),
+     "Send to the installer" hands it the pair, at the same address.
+     The script with the id "core" has no browser API: gen_tables.py (through
+     app/factory_fit.mjs), app/test_tool.mjs and app/fit_report.mjs run it
+     under node, and it is meant to become one tab of a larger app. -->
+<style>
+:root {
+  --bg: #f6f5f2; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #dcdad4;
+  --accent: #c2410c; --accent-ink: #ffffff; --plot: #c2410c; --ref: #8a8984; --grid: #e7e5df; --warn: #a16207;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --card: #20201e; --ink: #ecebe7; --muted: #9b9a95; --line: #34332f;
+    --accent: #fb923c; --accent-ink: #1d1d1b; --plot: #fb923c; --ref: #8d8c86; --grid: #2c2b28; --warn: #facc15;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1060px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 20px; max-width: 760px; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 12px; }
+.bar .base { color: var(--muted); font-size: 13px; }
+.legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin: 0 0 12px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--plot); vertical-align: middle; margin-right: 6px; }
+.legend i.ref { border-top: 2px dashed var(--ref); }
+button, .btn { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--card);
+       color: var(--ink); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover, .btn:hover { border-color: var(--muted); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; padding: 9px 18px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tonecard { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.tonecard a { color: var(--accent); }
+.tonecard label { display: block; margin: 4px 0; }
+.tonecard button { margin-top: 8px; }
+.tonecard .splash { margin: 0 0 6px; }
+.tonehead { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 6px; }
+.tonehead .pic { width: 88px; height: 88px; object-fit: cover; border-radius: 6px; flex: none; }
+.tonehead .title { font-weight: 600; }
+.tonehead .facts, .from { color: var(--muted); font-size: 12px; }
+.avatar { width: 18px; height: 18px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+.desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.from { margin-top: 4px; overflow-wrap: anywhere; }
+.from a { color: var(--accent); }
+.from img { width: 20px; height: 20px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+.from .open { border: 0; background: none; padding: 0; cursor: pointer; }
+/* TONE3000's official logo and T3K mark, unaltered (tone3000.com/api → Download TONE3000 Logos);
+   the full logo comes first, the mark only where it was seen (its design requirements) */
+.t3k-logo, .t3k-mark { display: inline-block; vertical-align: middle; background: center / contain no-repeat; }
+.t3k-logo { aspect-ratio: 210 / 32; height: 16px; background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjEwIiBoZWlnaHQ9IjMyIiB2aWV3Qm94PSIwIDAgMjEwIDMyIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzU4Nl85Njc3KSI+CjxwYXRoIGQ9Ik01Ni4yNDEyIDI1LjY2NDJWMjIuMTc4N0M1NS44MjE1IDIyLjc2NjEgNTUuMzI3NyAyMy4zMDUxIDU0Ljc1MyAyMy43OTI0QzUyLjI4MzIgMjUuODkzMyA0OC4zNDE1IDI3LjAwMzYgNDMuMzU3IDI3LjAwMzZDNDAuMjgzNiAyNy4wMDM2IDM1Ljg5OTYgMjYuNTE2NCAzMi40ODQxIDI0LjIwMjNDMzAuNDAxOCAyMi43OTIgMjkuMjIwMyAyMC42NzggMjguODg3OSAxNy43Nzk4QzI4LjgyMzEgMTguMzIyIDI4Ljc4NzcgMTguODg2OCAyOC43ODc3IDE5LjQ4MzlDMjguNzg3NyAxOS43MjU5IDI4Ljc5NDMgMTkuOTYxNSAyOC44MDA2IDIwLjE5MzlDMjguNzk0MyAyMC4zODExIDI4Ljc4NzcgMjAuNTY4MyAyOC43ODc3IDIwLjc2MTlDMjguNzg3NyAyNC41OTYxIDI5Ljk5ODIgMjcuMjc4MSAzMi40ODQxIDI4Ljk2NThDMzUuODk5NiAzMS4yODMyIDQwLjI4MDUgMzEuNzY3MyA0My4zNTcgMzEuNzY3M0M0OC4zNDE1IDMxLjc2NzMgNTIuMjgzMiAzMC42NTcgNTQuNzUzIDI4LjU1NjFDNTUuMzI3NyAyOC4wNjg2IDU1LjgyMTUgMjcuNTI5NyA1Ni4yNDEyIDI2Ljk0MjNWMzEuNDQ3OEg2Ny4wODg1VjI2LjY4NDFINTYuMjQxMlYyNS42NjQyWiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNMTA5Ljc2IDguNDU5MTVDMTEwLjUxOSA3LjczOTQ3IDExMS40ODQgNy4xMjMwMyAxMTIuNjUzIDYuNjE2MzRDMTE1LjE2NCA1LjUyODcgMTE4LjIzOCA0Ljk3NjgzIDEyMS43ODkgNC45NzY4M0MxMjUuNTI0IDQuOTc2ODMgMTI4LjczMyA1LjU5MzI2IDEzMS4zMzIgNi44MDY3NEMxMzIuNzA3IDcuNDQ5IDEzMy43MTQgOC4xODQ4NSAxMzQuMzUzIDkuMDA0NThDMTM0LjYxOCA4LjcxNDE0IDEzNC45MDIgOC40Mzk4MSAxMzUuMjA5IDguMTc4MzhDMTM3LjY5MSA2LjA4MzgxIDE0MS42MjMgNC45NzY4MyAxNDYuNTg1IDQuOTc2ODNDMTUxLjAwMiA0Ljk3NjgzIDE1NC42NjMgNS44ODY5MyAxNTcuMTY1IDcuNjA3MTNDMTU3Ljc2MiA4LjAxMzggMTU4LjI4NSA4LjQ3MjA3IDE1OC43NDYgOC45NjkwOUMxNTkuMDAyIDguNjkxNTQgMTU5LjI3NiA4LjQyNjg5IDE1OS41NzMgOC4xNzgzOEMxNjIuMDU2IDYuMDgzODEgMTY1Ljk4OCA0Ljk3NjgzIDE3MC45NSA0Ljk3NjgzQzE3NS4zMzcgNC45NzY4MyAxNzguODQ5IDUuODYxMTIgMTgxLjM5IDcuNjA3MTNDMTgyLjAxMyA4LjAzNjM5IDE4Mi41NjUgOC41MTQwNCAxODMuMDQ5IDkuMDQwMUMxODMuMzIgOC43MzY3MyAxODMuNjE0IDguNDQ5NDggMTgzLjkzNyA4LjE3ODM4QzE4Ni40MTkgNi4wODM4MSAxOTAuMzUyIDQuOTc2ODMgMTk1LjMxNCA0Ljk3NjgzQzE5OS43MyA0Ljk3NjgzIDIwMy4zODcgNS44ODY5MyAyMDUuODkgNy42MDcxM0MyMDcuOTc4IDkuMDQwMSAyMDkuMjI3IDExLjAxODUgMjA5LjY4MyAxMy42MTY1QzIwOS44MTUgMTIuODc0MiAyMDkuODggMTIuMDgwMyAyMDkuODggMTEuMjMxNUMyMDkuODggNy40MjY0IDIwOC41NzUgNC42ODMxMyAyMDUuODg2IDIuODQwMjlDMjAzLjM4NCAxLjEyMDExIDE5OS43MjcgMC4yMDk5OTEgMTk1LjMxIDAuMjA5OTkxQzE5MC4zNDggMC4yMDk5OTEgMTg2LjQxNiAxLjMxNjk4IDE4My45MzQgMy40MTE1NEMxODMuNjE0IDMuNjgyNjQgMTgzLjMyIDMuOTY5ODkgMTgzLjA0NiA0LjI3MzI2QzE4Mi41NjIgMy43NDcyIDE4Mi4wMTMgMy4yNjk1NSAxODEuMzg3IDIuODQwMjlDMTc4Ljg0OSAxLjA5NDI5IDE3NS4zMzQgMC4yMDk5OTEgMTcwLjk0NiAwLjIwOTk5MUMxNjUuOTg0IDAuMjA5OTkxIDE2Mi4wNTIgMS4zMTY5OCAxNTkuNTcgMy40MTE1NEMxNTkuMjczIDMuNjYzMjcgMTU4Ljk5OCAzLjkyNzkzIDE1OC43NDMgNC4yMDIyNkMxNTguMjgyIDMuNzAyMDEgMTU3Ljc1OSAzLjI0Njk2IDE1Ny4xNjEgMi44NDAyOUMxNTQuNjU5IDEuMTIwMTEgMTUwLjk5OSAwLjIwOTk5MSAxNDYuNTgyIDAuMjA5OTkxQzE0MS42MiAwLjIwOTk5MSAxMzcuNjg4IDEuMzE2OTggMTM1LjIwNiAzLjQxMTU0QzEzNC44OTYgMy42NzI5NyAxMzQuNjEyIDMuOTQ3MyAxMzQuMzUgNC4yMzc3NUMxMzMuNzExIDMuNDIxMjQgMTMyLjcwNyAyLjY4NTM4IDEzMS4zMjggMi4wMzk5MUMxMjguNzMgMC44MjY0MiAxMjUuNTIxIDAuMjA5OTkxIDEyMS43ODYgMC4yMDk5OTFDMTE4LjA1IDAuMjA5OTkxIDExNS4xNjEgMC43NjE4NzIgMTEyLjY1IDEuODQ5NUMxMTEuNDgxIDIuMzU2MiAxMTAuNTE2IDIuOTcyNjMgMTA5Ljc1NyAzLjY5MjMyVjAuNjU1MzY4SDc4Ljc5NDJWNS40MTg5OEgxMDkuNzU3VjguNDU1OTNMMTA5Ljc2IDguNDU5MTVaIiBmaWxsPSIjRkYwMDAwIi8+CjxwYXRoIGQ9Ik0zMy42Mzk5IDcuMDc3ODRDMzYuMDgwNiA1LjY5OTc1IDM5LjQxNTMgNC45ODAwNCA0My40MTUzIDQuOTgwMDRDNDcuODM0NyA0Ljk4MDA0IDUxLjQ5MjUgNS44OTAxNSA1My45OTQzIDcuNjEwMzVDNTQuODk4NCA4LjIzMDAxIDU1LjY0NCA4Ljk1NjE3IDU2LjIzODEgOS43ODg4NVY1LjQyMjJINjYuMDQyNEw3OC43OTExIDE1LjcwNDZWMTAuOTQxTDY2LjA0MjQgMC42NTg1OTFINTYuMjM4MVY1LjAyNTIzQzU1LjY0NCA0LjE5MjU1IDU0Ljg5ODQgMy40NjY0IDUzLjk5NDMgMi44NDY3NkM1MS40OTI1IDEuMTI2NTYgNDcuODM0NyAwLjIxNjQzOCA0My40MTUzIDAuMjE2NDM4QzM5LjQxMjIgMC4yMTY0MzggMzYuMDgwNiAwLjkzNjE0MiAzMy42Mzk5IDIuMzE0MjNWMC42NTg1OTFIMC4wOTQ2MDQ1VjUuNDIyMkgzMy42Mzk5VjcuMDc3ODRaIiBmaWxsPSIjRkYwMDAwIi8+CjxwYXRoIGQ9Ik0xNDguNzEgMTQuMDU1NEMxNDcuNjU3IDEzLjIzNTcgMTQ2Ljc3MyAxMy4yMzU3IDE0Ni4zOTIgMTMuMjM1N0MxNDUuNzQ2IDEzLjIzNTcgMTQ1LjA3MSAxMy41MTMyIDE0NC4zODcgMTQuMDY1MUMxNDMuOTY3IDE0LjQwMDggMTQzLjA5NiAxNS4zNzU0IDE0Mi43OTUgMTcuNzM3OUMxNDMuMDk2IDIwLjExOTcgMTQzLjk3NyAyMS4wODE0IDE0NC4zOTcgMjEuNDEwNkMxNDUuNDQ5IDIyLjIzMzYgMTQ2LjI5MiAyMi4yMzM2IDE0Ni42NTMgMjIuMjMzNkMxNDcuMzI1IDIyLjIzMzYgMTQ4LjAxNiAyMS45NTI4IDE0OC43MDYgMjEuNDAwOUMxNDkuMTg3IDIxLjAxNjkgMTQ5LjkzIDIwLjA1NTEgMTUwLjE4NSAxNy43MjVDMTQ5LjkzMyAxNS4zNzg3IDE0OS4xODcgMTQuNDI2NiAxNDguNzEgMTQuMDUyMlYxNC4wNTU0WiIgZmlsbD0iI0ZGMDAwMCIvPgo8cGF0aCBkPSJNMTIyLjI3OSAyMS4wMjM0QzEyMi4wMTggMjEuMDIzNCAxMjEuNDA4IDIxLjA0OTIgMTIwLjI2OCAyMS4yMTA2TDExOS4zMSAyMS4zNDYxQzEyMC4yMzYgMjIuMjI3MiAxMjEuMzQ3IDIyLjIzMzYgMTIxLjg2IDIyLjIzMzZDMTIyLjUzMSAyMi4yMzM2IDEyMy40MzUgMjIuMTY1OCAxMjQuNDc1IDIxLjYzMzNDMTI0LjUzOSAyMS42MDEgMTI0LjU5NyAyMS41NjIzIDEyNC42NTkgMjEuNTI2OEMxMjMuOTYxIDIxLjE3MTggMTIzLjI1MSAyMS4wMjAxIDEyMi4yNzkgMjEuMDIwMVYyMS4wMjM0WiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNMTA4LjQ4MiAxNi42OTU0VjE3Ljk3MzVWMTguMjU3NVYxOC45OTY1TDExNi4zMzkgMTguNDI4NUwxMTYuMzc4IDE4LjI4TDExNS40OTcgMTguNDA1OUwxMTUuOTE3IDE2LjY4MjVMMTA4LjQ4MiAxNS45NjZWMTYuNjk1NFoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTE3My4wNzQgMTQuMDU1NEMxNzIuMDIxIDEzLjIzNTcgMTcxLjEzNyAxMy4yMzU3IDE3MC43NTYgMTMuMjM1N0MxNzAuMTEgMTMuMjM1NyAxNjkuNDM1IDEzLjUxMzIgMTY4Ljc1MSAxNC4wNjUxQzE2OC4zMzEgMTQuNDAwOCAxNjcuNDYgMTUuMzc1NCAxNjcuMTU5IDE3LjczNzlDMTY3LjQ2IDIwLjExOTcgMTY4LjM0MSAyMS4wODE0IDE2OC43NjEgMjEuNDEwNkMxNjkuODEzIDIyLjIzMzYgMTcwLjY1NiAyMi4yMzM2IDE3MS4wMTcgMjIuMjMzNkMxNzEuNjg5IDIyLjIzMzYgMTcyLjM3OSAyMS45NTI4IDE3My4wNyAyMS40MDA5QzE3My41NTEgMjEuMDE2OSAxNzQuMjk0IDIwLjA1NTEgMTc0LjU0OSAxNy43MjVDMTc0LjI5NyAxNS4zNzg3IDE3My41NTEgMTQuNDI2NiAxNzMuMDc0IDE0LjA1MjJWMTQuMDU1NFoiIGZpbGw9IiNGRjAwMDAiLz4KPHBhdGggZD0iTTE5Ny40MzQgMTQuMDU1NEMxOTYuMzgyIDEzLjIzNTcgMTk1LjQ5NyAxMy4yMzU3IDE5NS4xMTcgMTMuMjM1N0MxOTQuNDcxIDEzLjIzNTcgMTkzLjc5NiAxMy41MTMyIDE5My4xMTIgMTQuMDY1MUMxOTIuNjkyIDE0LjQwMDggMTkxLjgyIDE1LjM3NTQgMTkxLjUyIDE3LjczNzlDMTkxLjgyIDIwLjExOTcgMTkyLjcwMiAyMS4wODE0IDE5My4xMjEgMjEuNDEwNkMxOTQuMTc0IDIyLjIzMzYgMTk1LjAxNyAyMi4yMzM2IDE5NS4zNzggMjIuMjMzNkMxOTYuMDUgMjIuMjMzNiAxOTYuNzQgMjEuOTUyOCAxOTcuNDMxIDIxLjQwMDlDMTk3LjkxMiAyMS4wMTY5IDE5OC42NTUgMjAuMDU1MSAxOTguOTEgMTcuNzI1QzE5OC42NTggMTUuMzc4NyAxOTcuOTEyIDE0LjQyNjYgMTk3LjQzNCAxNC4wNTIyVjE0LjA1NTRaIiBmaWxsPSIjRkYwMDAwIi8+CjxwYXRoIGQ9Ik00NS41NDI2IDE0LjA1NTRDNDQuNDkwMiAxMy4yMzU3IDQzLjYwNTUgMTMuMjM1NyA0My4yMjQ4IDEzLjIzNTdDNDIuNTc5MSAxMy4yMzU3IDQxLjkwNDQgMTMuNTEzMiA0MS4yMTk5IDE0LjA2NTFDNDAuNzQ1MyAxNC40NDkyIDQwLjAwMjggMTUuNDEwOSAzOS43NTExIDE3LjczNzlDNDAuMDAyOCAyMC4wODA5IDQwLjc0ODUgMjEuMDM2MiA0MS4yMjk2IDIxLjQxMDZDNDIuMjgyIDIyLjIzMzYgNDMuMTI0NyAyMi4yMzM2IDQzLjQ4NjIgMjIuMjMzNkM0NC4xNTc3IDIyLjIzMzYgNDQuODQ4NiAyMS45NTI4IDQ1LjUzOTQgMjEuNDAwOUM0Ni4wMjAzIDIxLjAxNjkgNDYuNzYyOCAyMC4wNTUxIDQ3LjAxNDggMTcuNzI1QzQ2Ljc2MjggMTUuMzc4NyA0Ni4wMTcyIDE0LjQyNjYgNDUuNTM5NCAxNC4wNTIyTDQ1LjU0MjYgMTQuMDU1NFoiIGZpbGw9IiNGRjAwMDAiLz4KPHBhdGggZD0iTTExLjMyOTEgMTAuNDY5OEgwLjA5NDYwNDVWMTMuOTU1NFYxNS4yMzM0SDExLjMyOTFWMTMuOTU1NFYxMC40Njk4WiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNMTEuMzI5IDMwLjE2OTdWMzEuNDQ3OEgyMi4zNDcyVjMwLjE2OTdWMjYuNjg0MUgxMS4zMjlWMzAuMTY5N1oiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTMwLjEwODEgMTAuNDY5OEgyMi4zNTA1VjE1LjIzMzRIMjguODEwMkMyOC45MDA3IDEzLjM4NzQgMjkuMzMzMyAxMS44MDkyIDMwLjEwODEgMTAuNDY5OFoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTIwNi42NDUgMjMuNzkyNEMyMDQuMTc1IDI1Ljg5MzMgMjAwLjIzMyAyNy4wMDM2IDE5NS4yNDkgMjcuMDAzNkMxOTIuMTcyIDI3LjAwMzYgMTg3Ljc5MSAyNi41MTY0IDE4NC4zNzYgMjQuMjAyM0MxODMuODc5IDIzLjg2NjYgMTgzLjQzNiAyMy40ODU4IDE4My4wNCAyMy4wNjk1QzE4Mi44MDQgMjMuMzIxMiAxODIuNTUyIDIzLjU2MzMgMTgyLjI4MSAyMy43OTI0QzE3OS44MTEgMjUuODkzMyAxNzUuODY5IDI3LjAwMzYgMTcwLjg4NSAyNy4wMDM2QzE2Ny44MDggMjcuMDAzNiAxNjMuNDI4IDI2LjUxNjQgMTYwLjAxMiAyNC4yMDIzQzE1OS41MTUgMjMuODY2NiAxNTkuMDczIDIzLjQ4NTggMTU4LjY3NSAyMy4wNjk1QzE1OC40NCAyMy4zMjEyIDE1OC4xODggMjMuNTYzMyAxNTcuOTE3IDIzLjc5MjRDMTU1LjQ0NyAyNS44OTMzIDE1MS41MDUgMjcuMDAzNiAxNDYuNTIxIDI3LjAwMzZDMTQzLjQ0NCAyNy4wMDM2IDEzOS4wNjMgMjYuNTE2NCAxMzUuNjQ4IDI0LjIwMjNDMTM1LjM0NSAyMy45OTU3IDEzNS4wNiAyMy43NzMgMTM0Ljc5MiAyMy41Mzc0QzEzNC4xODIgMjQuMDI4IDEzMy40NCAyNC40ODMxIDEzMi41NjIgMjQuODk5NEMxMjkuNjM0IDI2LjI5MzYgMTI2LjA1NyAyNy4wMDM2IDEyMS45MjggMjcuMDAzNkMxMTguMDQ3IDI3LjAwMzYgMTE0LjcxMiAyNi4zNzExIDExMi4wMiAyNS4xMjUzQzExMS40ODEgMjQuODc2OCAxMTAuOTkgMjQuNjA5IDExMC41NDggMjQuMzI0OFYyNi42ODQxSDc5LjgwMTVMNjcuMDgxOSAxNi40MDQ5VjIxLjE2ODVMNzkuODAxNSAzMS40NDc3SDExMC41NDhWMjkuMDg4NUMxMTAuOTkgMjkuMzcyNiAxMTEuNDgxIDI5LjY0MDUgMTEyLjAyIDI5Ljg4OUMxMTQuNzEyIDMxLjEzNDggMTE4LjA0NCAzMS43NjczIDEyMS45MjggMzEuNzY3M0MxMjYuMDU3IDMxLjc2NzMgMTI5LjYzNyAzMS4wNjA0IDEzMi41NjIgMjkuNjYzQzEzMy40NCAyOS4yNDM0IDEzNC4xODIgMjguNzg4NCAxMzQuNzkyIDI4LjMwMTFDMTM1LjA1NyAyOC41MzY3IDEzNS4zNDUgMjguNzU5MyAxMzUuNjQ4IDI4Ljk2NThDMTM5LjA2MyAzMS4yODMxIDE0My40NDQgMzEuNzY3MyAxNDYuNTIxIDMxLjc2NzNDMTUxLjUwNSAzMS43NjczIDE1NS40NDcgMzAuNjU3IDE1Ny45MTcgMjguNTU2MUMxNTguMTg4IDI4LjMyNjggMTU4LjQ0IDI4LjA4NDggMTU4LjY3NSAyNy44MzNDMTU5LjA2OSAyOC4yNDk0IDE1OS41MTUgMjguNjMwMyAxNjAuMDEyIDI4Ljk2NThDMTYzLjQyOCAzMS4yODMxIDE2Ny44MDggMzEuNzY3MyAxNzAuODg1IDMxLjc2NzNDMTc1Ljg2OSAzMS43NjczIDE3OS44MTEgMzAuNjU3IDE4Mi4yODEgMjguNTU2MUMxODIuNTUyIDI4LjMyNjggMTgyLjgwNCAyOC4wODQ4IDE4My4wNCAyNy44MzNDMTgzLjQzMyAyOC4yNDk0IDE4My44NzkgMjguNjMwMyAxODQuMzc2IDI4Ljk2NThDMTg3Ljc5MSAzMS4yODMxIDE5Mi4xNzIgMzEuNzY3MyAxOTUuMjQ5IDMxLjc2NzNDMjAwLjIzMyAzMS43NjczIDIwNC4xNzUgMzAuNjU3IDIwNi42NDUgMjguNTU2MUMyMDguODIxIDI2LjcwNjcgMjA5Ljg3NiAyNC4xNTcxIDIwOS44NzYgMjAuNzYxOUMyMDkuODc2IDIwLjU0ODkgMjA5Ljg3IDIwLjMzOTEgMjA5Ljg2MyAyMC4xMzI1QzIwOS44NzMgMTkuOTE5NiAyMDkuODc2IDE5LjcwMzMgMjA5Ljg3NiAxOS40ODM5QzIwOS44NzYgMTguODc3MSAyMDkuODQxIDE4LjI5OTQgMjA5Ljc3MyAxNy43NDQzQzIwOS40NiAyMC4yODQzIDIwOC40MyAyMi4yNzU1IDIwNi42NDUgMjMuNzkyNFoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTExNy44MDIgMTguMzI1M0wxMTguMzE1IDE5Ljc1MThDMTE4LjU3NiAyMC40Nzc5IDExOC45MjUgMjAuOTg0NiAxMTkuMzA5IDIxLjM0OTNMMTIwLjI2OCAyMS4yMTM4QzEyMS40MDQgMjEuMDUyNCAxMjIuMDE4IDIxLjAyNjYgMTIyLjI3OSAyMS4wMjY2QzEyMy4yNDggMjEuMDI2NiAxMjMuOTYxIDIxLjE3ODMgMTI0LjY1OSAyMS41MzMzQzEyNS40NCAyMS4wODE1IDEyNS44MjQgMjAuNDk0MSAxMjUuODI0IDE5Ljc0MjFDMTI1LjgyNCAxOC45OTAxIDEyNS40NDMgMTguNDQ0NyAxMjQuNjU2IDE4LjA0NzdDMTIzLjk1OCAxNy42OTI3IDEyMy4yNDggMTcuNTQxIDEyMi4yNzYgMTcuNTQxQzEyMi4wMTUgMTcuNTQxIDEyMS40MDQgMTcuNTY2OCAxMjAuMjY1IDE3LjcyODJMMTE2LjM3NSAxOC4yODMzTDExNi4zMzkgMTguNDMxOEwxMTcuNzk5IDE4LjMyNTNIMTE3LjgwMloiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTEwOC4zMDQgMTAuNDY5OEg4OS42MTU1VjEzLjIxMzFIMTA4LjQ4MlYxNS45NjkzTDExNS45MTcgMTYuNjg1N0wxMTYuNzQ2IDEzLjI4MDlMMTA3LjYxMyAxMi40MDNMMTA4LjA2MiAxMS4wNzMzQzEwOC4xMyAxMC44NyAxMDguMjExIDEwLjY2OTkgMTA4LjMwMSAxMC40NzYzTDEwOC4zMDQgMTAuNDY5OFoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTE0OC43MSAxMC41Njk5QzE0Ny42NTcgOS43NTAxMSAxNDYuNzczIDkuNzUwMTEgMTQ2LjM5MiA5Ljc1MDExQzE0NS43NDYgOS43NTAxMSAxNDUuMDcxIDEwLjAyNzcgMTQ0LjM4NyAxMC41Nzk2QzE0My44NzcgMTAuOTg5NCAxNDIuNjkyIDEyLjMzODUgMTQyLjY5MiAxNS45OTUxQzE0Mi42OTIgMTYuNjUwMyAxNDIuNzMxIDE3LjIyNzkgMTQyLjc5NSAxNy43NDExQzE0My4wOTYgMTUuMzc4NyAxNDMuOTY3IDE0LjQwNCAxNDQuMzg3IDE0LjA2ODNDMTQ1LjA3MSAxMy41MTk3IDE0NS43NDYgMTMuMjM4OSAxNDYuMzkyIDEzLjIzODlDMTQ2Ljc2OSAxMy4yMzg5IDE0Ny42NTcgMTMuMjM4OSAxNDguNzEgMTQuMDU4N0MxNDkuMTg4IDE0LjQzMyAxNDkuOTMzIDE1LjM4MTkgMTUwLjE4NSAxNy43MzE0QzE1MC4yNCAxNy4yMjE1IDE1MC4yNzIgMTYuNjQ3IDE1MC4yNzIgMTUuOTk4M0MxNTAuMjcyIDEyLjM0MTcgMTQ5LjI5NCAxMS4wMzE0IDE0OC43MSAxMC41NzYzVjEwLjU2OTlaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik04OS42MTU1IDE4LjI1NzVWMjEuNjM5OEgxMDguMDA3QzEwNy44MTcgMjEuMjQyOCAxMDcuNjgxIDIwLjgyOTcgMTA3LjYwNCAyMC4zOTcyTDEwNy4zNjggMTkuMDc3MkwxMDguNDgyIDE4Ljk5NjZWMTguMjU3NUg4OS42MTU1WiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNNDUuNTQyNiAxMC41Njk5QzQ0LjQ5MDIgOS43NTAxMSA0My42MDU2IDkuNzUwMTEgNDMuMjI0NiA5Ljc1MDExQzQyLjU3OTEgOS43NTAxMSA0MS45MDQyIDEwLjAyNzcgNDEuMjE5OSAxMC41Nzk2QzQwLjYzODkgMTEuMDQ3NSAzOS42NjM4IDEyLjM3MDcgMzkuNjYzOCAxNS45OTUxQzM5LjY2MzggMTYuNjUwMyAzOS42OTYxIDE3LjIyNzkgMzkuNzUxMSAxNy43NDExQzQwLjAwMjggMTUuNDE0MiA0MC43NDIyIDE0LjQ1MjQgNDEuMjE5OSAxNC4wNjgzQzQxLjkwNDIgMTMuNTE5NyA0Mi41NzkxIDEzLjIzODkgNDMuMjI0NiAxMy4yMzg5QzQzLjYwMjQgMTMuMjM4OSA0NC40OTAyIDEzLjIzODkgNDUuNTQyNiAxNC4wNTg3QzQ2LjAyMDMgMTQuNDMzIDQ2Ljc2NjIgMTUuMzgxOSA0Ny4wMTc5IDE3LjczMTRDNDcuMDcyNyAxNy4yMjE1IDQ3LjEwNSAxNi42NDcgNDcuMTA1IDE1Ljk5ODNDNDcuMTA1IDEyLjM0MTcgNDYuMTI3IDExLjAzMTQgNDUuNTQyNiAxMC41NzYzVjEwLjU2OTlaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik0xMjMuNDkzIDEwLjA3OTNDMTIzLjAwNiA5Ljg0MzcxIDEyMi41MzEgOS43NDY4OSAxMjEuODYgOS43NDY4OUMxMjEuMTQgOS43NDY4OSAxMjAuNjM2IDkuODUwMTYgMTIwLjEyIDEwLjEwNTFDMTE5LjY1OCAxMC4zMzQzIDExOS4wNDggMTAuODIxNiAxMTguNzY0IDExLjg1NzZMMTE4LjQ5NiAxMi44NDE5TDEyMC41NTUgMTIuOTE5NEMxMjIuMTE1IDEyLjkwNjUgMTIyLjg2NCAxMi42NjEyIDEyMy4yOTMgMTIuNDc0QzEyMy43MjIgMTIuMjg2OCAxMjQuMjkxIDExLjk1NzcgMTI0LjI5MSAxMS4yMTUzQzEyNC4yOTEgMTAuNDczIDEyMy42OSAxMC4xNjk3IDEyMy40OTMgMTAuMDcyOVYxMC4wNzkzWiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNMTczLjA3NCAxMC41Njk5QzE3Mi4wMjEgOS43NTAxMSAxNzEuMTM3IDkuNzUwMTEgMTcwLjc1NiA5Ljc1MDExQzE3MC4xMSA5Ljc1MDExIDE2OS40MzUgMTAuMDI3NyAxNjguNzUxIDEwLjU3OTZDMTY4LjI0MSAxMC45ODk0IDE2Ny4wNTYgMTIuMzM4NSAxNjcuMDU2IDE1Ljk5NTFDMTY3LjA1NiAxNi42NTAzIDE2Ny4wOTUgMTcuMjI3OSAxNjcuMTYgMTcuNzQxMUMxNjcuNDYgMTUuMzc4NyAxNjguMzMxIDE0LjQwNCAxNjguNzUxIDE0LjA2ODNDMTY5LjQzNSAxMy41MTk3IDE3MC4xMSAxMy4yMzg5IDE3MC43NTYgMTMuMjM4OUMxNzEuMTM0IDEzLjIzODkgMTcyLjAyMSAxMy4yMzg5IDE3My4wNzQgMTQuMDU4N0MxNzMuNTUxIDE0LjQzMyAxNzQuMjk3IDE1LjM4MTkgMTc0LjU0OSAxNy43MzE0QzE3NC42MDQgMTcuMjIxNSAxNzQuNjM2IDE2LjY0NyAxNzQuNjM2IDE1Ljk5ODNDMTc0LjYzNiAxMi4zNDE3IDE3My42NTggMTEuMDMxNCAxNzMuMDc0IDEwLjU3NjNWMTAuNTY5OVoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTE5Ny40MzQgMTAuNTY5OUMxOTYuMzgyIDkuNzUwMTEgMTk1LjQ5NyA5Ljc1MDExIDE5NS4xMTcgOS43NTAxMUMxOTQuNDcxIDkuNzUwMTEgMTkzLjc5NiAxMC4wMjc3IDE5My4xMTIgMTAuNTc5NkMxOTIuNjAyIDEwLjk4OTQgMTkxLjQxNyAxMi4zMzg1IDE5MS40MTcgMTUuOTk1MUMxOTEuNDE3IDE2LjY1MDMgMTkxLjQ1NiAxNy4yMjc5IDE5MS41MiAxNy43NDExQzE5MS44MjEgMTUuMzc4NyAxOTIuNjkyIDE0LjQwNCAxOTMuMTEyIDE0LjA2ODNDMTkzLjc5NiAxMy41MTk3IDE5NC40NzEgMTMuMjM4OSAxOTUuMTE3IDEzLjIzODlDMTk1LjQ5NCAxMy4yMzg5IDE5Ni4zODIgMTMuMjM4OSAxOTcuNDM0IDE0LjA1ODdDMTk3LjkxMiAxNC40MzMgMTk4LjY1OCAxNS4zODE5IDE5OC45MSAxNy43MzE0QzE5OC45NjUgMTcuMjIxNSAxOTguOTk3IDE2LjY0NyAxOTguOTk3IDE1Ljk5ODNDMTk4Ljk5NyAxMi4zNDE3IDE5OC4wMTkgMTEuMDMxNCAxOTcuNDM0IDEwLjU3NjNWMTAuNTY5OVoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTIwOS42NzYgMTMuNjE5N0MyMDkuMjIxIDExLjAyMTcgMjA3Ljk3MiA5LjA0MDEgMjA1Ljg4MyA3LjYxMDM4QzIwMy4zODEgNS44OTAxOCAxOTkuNzIzIDQuOTgwMDUgMTk1LjMwNyA0Ljk4MDA1QzE5MC4zNDUgNC45ODAwNSAxODYuNDEzIDYuMDg3MDYgMTgzLjkzMSA4LjE4MTZDMTgzLjYxMSA4LjQ1MjcgMTgzLjMxNyA4LjczOTk1IDE4My4wNDMgOS4wNDMzMkMxODIuNTU4IDguNTE3MjYgMTgyLjAxIDguMDM5NjEgMTgxLjM4MyA3LjYxMDM4QzE3OC44NDYgNS44NjQzNiAxNzUuMzMgNC45ODAwNSAxNzAuOTQzIDQuOTgwMDVDMTY1Ljk4MSA0Ljk4MDA1IDE2Mi4wNDkgNi4wODcwNiAxNTkuNTY3IDguMTgxNkMxNTkuMjcgOC40MzMzNiAxNTguOTk1IDguNjk3OTkgMTU4Ljc0IDguOTcyMzJDMTU4LjI3OSA4LjQ3MjA3IDE1Ny43NTUgOC4wMTcwMiAxNTcuMTU4IDcuNjEwMzhDMTU0LjY1NiA1Ljg5MDE4IDE1MC45OTUgNC45ODAwNSAxNDYuNTc5IDQuOTgwMDVDMTQxLjYxNyA0Ljk4MDA1IDEzNy42ODUgNi4wODcwNiAxMzUuMjAyIDguMTgxNkMxMzQuODkzIDguNDQzMDMgMTM0LjYwOCA4LjcxNzM2IDEzNC4zNDcgOS4wMDc4M0MxMzMuNzA4IDguMTkxMyAxMzIuNzA0IDcuNDU1NDQgMTMxLjMyNSA2LjgwOTk5QzEyOC43MjYgNS41OTY0OSAxMjUuNTE4IDQuOTgwMDUgMTIxLjc4MiA0Ljk4MDA1QzExOC4wNDcgNC45ODAwNSAxMTUuMTU4IDUuNTMxOTMgMTEyLjY0NiA2LjYxOTU2QzExMS40NzggNy4xMjYyNiAxMTAuNTEyIDcuNzQyNjkgMTA5Ljc1NCA4LjQ2MjRWNS40MjU0M0g3OC43OTExVjE1LjcwNzlMNjYuMDQyNCA1LjQyNTQzSDU2LjIzODFWOS43OTIwN0M1NS42NDQgOC45NTk0MiA1NC44OTg0IDguMjMzMjYgNTMuOTk0MyA3LjYxMzZDNTEuNDkyNSA1Ljg5MzQxIDQ3LjgzNDcgNC45ODMyNyA0My40MTUzIDQuOTgzMjdDMzkuNDEyMiA0Ljk4MzI3IDM2LjA4MDYgNS43MDI5OCAzMy42Mzk5IDcuMDgxMDdWNS40MjU0M0gwLjA5NDYwNDVWMTAuNDczSDExLjMyOTFWMjYuNjg3M0gyMi4zNDczVjEwLjQ3M0gzMC4xMDVDMjkuMzI2OSAxMS44MTI0IDI4Ljg5NzYgMTMuMzkwNiAyOC44MDcyIDE1LjIzNjdDMjguNzk0MyAxNS40ODg0IDI4Ljc4NzggMTUuNzQwMSAyOC43ODc4IDE2LjAwMTZDMjguNzg3OCAxNi42Mjc3IDI4LjgyMzQgMTcuMjE4MyAyOC44ODc5IDE3Ljc4MzFDMjkuMjIwNCAyMC42ODEyIDMwLjQwMjEgMjIuNzkyIDMyLjQ4NDEgMjQuMjA1NUMzNS44OTk3IDI2LjUyMjcgNDAuMjgwNiAyNy4wMDY4IDQzLjM1NzEgMjcuMDA2OEM0OC4zNDE2IDI3LjAwNjggNTIuMjgzNSAyNS44OTY3IDU0Ljc1MzEgMjMuNzk1N0M1NS4zMjc4IDIzLjMwODMgNTUuODIxOCAyMi43Njk0IDU2LjI0MTMgMjIuMTgyVjI2LjY4NzNINjcuMDg4NVYxNi40MDgyTDc5LjgwODEgMjYuNjg3M0gxMTAuNTU0VjI0LjMyODJDMTEwLjk5NyAyNC42MTIxIDExMS40ODcgMjQuODggMTEyLjAyNyAyNS4xMjg1QzExNC43MTkgMjYuMzc0MyAxMTguMDUgMjcuMDA2OCAxMjEuOTM0IDI3LjAwNjhDMTI2LjA2MyAyNy4wMDY4IDEyOS42NDMgMjYuMzAwMSAxMzIuNTY4IDI0LjkwMjVDMTMzLjQ0NiAyNC40ODMyIDEzNC4xODkgMjQuMDI4IDEzNC43OTkgMjMuNTQwN0MxMzUuMDY0IDIzLjc3NjMgMTM1LjM1MSAyMy45OTkgMTM1LjY1NSAyNC4yMDU1QzEzOS4wNyAyNi41MjI3IDE0My40NTEgMjcuMDA2OCAxNDYuNTI3IDI3LjAwNjhDMTUxLjUxMiAyNy4wMDY4IDE1NS40NTQgMjUuODk2NyAxNTcuOTIzIDIzLjc5NTdDMTU4LjE5NSAyMy41NjY1IDE1OC40NDYgMjMuMzI0NSAxNTguNjgyIDIzLjA3MjdDMTU5LjA3NiAyMy40ODkxIDE1OS41MjEgMjMuODY5OSAxNjAuMDE5IDI0LjIwNTVDMTYzLjQzNCAyNi41MjI3IDE2Ny44MTUgMjcuMDA2OCAxNzAuODkxIDI3LjAwNjhDMTc1Ljg3NiAyNy4wMDY4IDE3OS44MTggMjUuODk2NyAxODIuMjg3IDIzLjc5NTdDMTgyLjU1OCAyMy41NjY1IDE4Mi44MSAyMy4zMjQ1IDE4My4wNDYgMjMuMDcyN0MxODMuNDQgMjMuNDg5MSAxODMuODg1IDIzLjg2OTkgMTg0LjM4MyAyNC4yMDU1QzE4Ny43OTggMjYuNTIyNyAxOTIuMTc5IDI3LjAwNjggMTk1LjI1NSAyNy4wMDY4QzIwMC4yNCAyNy4wMDY4IDIwNC4xODIgMjUuODk2NyAyMDYuNjUxIDIzLjc5NTdDMjA4LjQzNyAyMi4yNzg4IDIwOS40NjcgMjAuMjg3NSAyMDkuNzggMTcuNzQ3NkMyMDkuODQ4IDE3LjE5MjQgMjA5Ljg4MyAxNi42MTE1IDIwOS44ODMgMTYuMDAxNkMyMDkuODgzIDE1LjE1NiAyMDkuODE1IDE0LjM2NTMgMjA5LjY4NiAxMy42MjNMMjA5LjY3NiAxMy42MTk3Wk0xMTYuNzQ2IDEzLjI3NDRMMTE1LjkxNyAxNi42NzkzTDExNS40OTcgMTguNDAyN0wxMTYuMzc1IDE4LjI3NjhMMTIwLjI2NSAxNy43MjE3QzEyMS40MDEgMTcuNTYwNCAxMjIuMDE1IDE3LjUzNDUgMTIyLjI3NiAxNy41MzQ1QzEyMy4yNDUgMTcuNTM0NSAxMjMuOTU4IDE3LjY4NjIgMTI0LjY1NiAxOC4wNDEyQzEyNS40NDMgMTguNDQxNCAxMjUuODI0IDE4Ljk5NjYgMTI1LjgyNCAxOS43MzU2QzEyNS44MjQgMjAuNDc0NyAxMjUuNDQgMjEuMDc1IDEyNC42NTkgMjEuNTI2OEMxMjQuNTk3IDIxLjU2MjMgMTI0LjUzOSAyMS41OTc4IDEyNC40NzUgMjEuNjMzM0MxMjMuNDM1IDIyLjE2MjYgMTIyLjUzMSAyMi4yMzM2IDEyMS44NiAyMi4yMzM2QzEyMS4zNDcgMjIuMjMzNiAxMjAuMjMzIDIyLjIzMDQgMTE5LjMxIDIxLjM0NjFDMTE4LjkyOSAyMC45ODE0IDExOC41OCAyMC40NzQ3IDExOC4zMTUgMTkuNzQ4NUwxMTcuODAyIDE4LjMyMkwxMTYuMzQzIDE4LjQyODVMMTA4LjQ4NSAxOC45OTY2TDEwNy4zNzEgMTkuMDc3MkwxMDcuNjA3IDIwLjM5NzJDMTA3LjY4NSAyMC44Mjk3IDEwNy44MiAyMS4yNDI4IDEwOC4wMSAyMS42Mzk4SDg5LjYxODlWMTguMjU3NUgxMDguNDg1VjEzLjIwOTlIODkuNjE4OVYxMC40NjY2SDEwOC4zMDdDMTA4LjIxNyAxMC42NjAyIDEwOC4xMzYgMTAuODYwMyAxMDguMDY5IDExLjA2MzdMMTA3LjYyIDEyLjM5MzNMMTE2Ljc1MyAxMy4yNzEyTDExNi43NDYgMTMuMjc0NFpNMTIzLjI5MyAxMi40NzcyQzEyMi44NjQgMTIuNjY0NCAxMjIuMTE4IDEyLjkwOTcgMTIwLjU1NiAxMi45MjI2TDExOC40OTYgMTIuODQ1MkwxMTguNzY0IDExLjg2MDhDMTE5LjA0NSAxMC44MjQ4IDExOS42NTUgMTAuMzM3NSAxMjAuMTIgMTAuMTA4NEMxMjAuNjM2IDkuODUzMzggMTIxLjE0IDkuNzUwMTEgMTIxLjg2IDkuNzUwMTFDMTIyLjUzMSA5Ljc1MDExIDEyMy4wMDYgOS44NDY5MyAxMjMuNDkzIDEwLjA4MjVDMTIzLjY5IDEwLjE3OTMgMTI0LjI5MSAxMC40NjY2IDEyNC4yOTEgMTEuMjI1QzEyNC4yOTEgMTEuOTgzNSAxMjMuNzIzIDEyLjI5NjUgMTIzLjI5MyAxMi40ODM3VjEyLjQ3NzJaTTE1MC4xODUgMTcuNzI1QzE0OS45MzMgMjAuMDU1MSAxNDkuMTg4IDIxLjAxNjkgMTQ4LjcwNyAyMS40MDA5QzE0OC4wMTYgMjEuOTUyOCAxNDcuMzIyIDIyLjIzMzYgMTQ2LjY1MyAyMi4yMzM2QzE0Ni4yOTIgMjIuMjMzNiAxNDUuNDQ5IDIyLjIzMzYgMTQ0LjM5NyAyMS40MTA2QzE0My45NzQgMjEuMDgxNCAxNDMuMDk2IDIwLjExNjQgMTQyLjc5NSAxNy43Mzc5QzE0Mi43MzEgMTcuMjI0NyAxNDIuNjkyIDE2LjY0NyAxNDIuNjkyIDE1Ljk5MTlDMTQyLjY5MiAxMi4zMzUyIDE0My44NzcgMTAuOTg5NCAxNDQuMzg3IDEwLjU3NjNDMTQ1LjA3MiAxMC4wMjc3IDE0NS43NDYgOS43NDY4OSAxNDYuMzkyIDkuNzQ2ODlDMTQ2Ljc2OSA5Ljc0Njg5IDE0Ny42NTcgOS43NDY4OSAxNDguNzEgMTAuNTY2NkMxNDkuMjk0IDExLjAyMTcgMTUwLjI3MiAxMi4zMzIgMTUwLjI3MiAxNS45ODg2QzE1MC4yNzIgMTYuNjQwNiAxNTAuMjQgMTcuMjExOCAxNTAuMTg1IDE3LjcyMTdWMTcuNzI1Wk0xNzQuNTQ5IDE3LjcyNUMxNzQuMjk3IDIwLjA1NTEgMTczLjU1MiAyMS4wMTY5IDE3My4wNzEgMjEuNDAwOUMxNzIuMzggMjEuOTUyOCAxNzEuNjg2IDIyLjIzMzYgMTcxLjAxNyAyMi4yMzM2QzE3MC42NTYgMjIuMjMzNiAxNjkuODEzIDIyLjIzMzYgMTY4Ljc2MSAyMS40MTA2QzE2OC4zMzggMjEuMDgxNCAxNjcuNDYgMjAuMTE2NCAxNjcuMTYgMTcuNzM3OUMxNjcuMDk1IDE3LjIyNDcgMTY3LjA1NiAxNi42NDcgMTY3LjA1NiAxNS45OTE5QzE2Ny4wNTYgMTIuMzM1MiAxNjguMjQxIDEwLjk4OTQgMTY4Ljc1MSAxMC41NzYzQzE2OS40MzUgMTAuMDI3NyAxNzAuMTEgOS43NDY4OSAxNzAuNzU2IDkuNzQ2ODlDMTcxLjEzNCA5Ljc0Njg5IDE3Mi4wMjEgOS43NDY4OSAxNzMuMDc0IDEwLjU2NjZDMTczLjY1OCAxMS4wMjE3IDE3NC42MzYgMTIuMzMyIDE3NC42MzYgMTUuOTg4NkMxNzQuNjM2IDE2LjY0MDYgMTc0LjYwNCAxNy4yMTE4IDE3NC41NDkgMTcuNzIxN1YxNy43MjVaTTE5OC45MSAxNy43MjVDMTk4LjY1OCAyMC4wNTUxIDE5Ny45MTIgMjEuMDE2OSAxOTcuNDMxIDIxLjQwMDlDMTk2Ljc0MSAyMS45NTI4IDE5Ni4wNDYgMjIuMjMzNiAxOTUuMzc4IDIyLjIzMzZDMTk1LjAxNyAyMi4yMzM2IDE5NC4xNzQgMjIuMjMzNiAxOTMuMTIyIDIxLjQxMDZDMTkyLjY5OSAyMS4wODE0IDE5MS44MjEgMjAuMTE2NCAxOTEuNTIgMTcuNzM3OUMxOTEuNDU2IDE3LjIyNDcgMTkxLjQxNyAxNi42NDcgMTkxLjQxNyAxNS45OTE5QzE5MS40MTcgMTIuMzM1MiAxOTIuNjAyIDEwLjk4OTQgMTkzLjExMiAxMC41NzYzQzE5My43OTYgMTAuMDI3NyAxOTQuNDcxIDkuNzQ2ODkgMTk1LjExNyA5Ljc0Njg5QzE5NS40OTQgOS43NDY4OSAxOTYuMzgyIDkuNzQ2ODkgMTk3LjQzNSAxMC41NjY2QzE5OC4wMTkgMTEuMDIxNyAxOTguOTk3IDEyLjMzMiAxOTguOTk3IDE1Ljk4ODZDMTk4Ljk5NyAxNi42NDA2IDE5OC45NjUgMTcuMjExOCAxOTguOTEgMTcuNzIxN1YxNy43MjVaTTQ3LjAxOCAxNy43MjVDNDYuNzY2MyAyMC4wNTUxIDQ2LjAyMDQgMjEuMDE2OSA0NS41NDI3IDIxLjQwMDlDNDQuODUxOCAyMS45NTI4IDQ0LjE1NzggMjIuMjMzNiA0My40ODk1IDIyLjIzMzZDNDMuMTI3OSAyMi4yMzM2IDQyLjI4NTMgMjIuMjMzNiA0MS4yMzI4IDIxLjQxMDZDNDAuNzUyIDIxLjAzNjIgNDAuMDA2MSAyMC4wODA5IDM5Ljc1NDMgMTcuNzM3OUMzOS42OTk1IDE3LjIyNDcgMzkuNjY3MyAxNi42NDcgMzkuNjY3MyAxNS45OTE5QzM5LjY2NzMgMTIuMzcwNyA0MC42NDIxIDExLjA0NDMgNDEuMjIzMSAxMC41NzYzQzQxLjkwNzcgMTAuMDI3NyA0Mi41ODIzIDkuNzQ2ODkgNDMuMjI4MSA5Ljc0Njg5QzQzLjYwNTYgOS43NDY4OSA0NC40OTM0IDkuNzQ2ODkgNDUuNTQ1OCAxMC41NjY2QzQ2LjEzMDIgMTEuMDIxNyA0Ny4xMDg1IDEyLjMzMiA0Ny4xMDg1IDE1Ljk4ODZDNDcuMTA4NSAxNi42NDA2IDQ3LjA3NjIgMTcuMjExOCA0Ny4wMjEyIDE3LjcyMTdMNDcuMDE4IDE3LjcyNVoiIGZpbGw9IiNGRkZGMDAiLz4KPC9nPgo8ZGVmcz4KPGNsaXBQYXRoIGlkPSJjbGlwMF8zNTg2Xzk2NzciPgo8cmVjdCB3aWR0aD0iMjEwIiBoZWlnaHQ9IjMyIiBmaWxsPSJ3aGl0ZSIvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo="); }
+.t3k-mark { aspect-ratio: 94 / 32; height: 13px; background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTQiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCA5NCAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzM1ODZfOTY3OCkiPgo8cGF0aCBkPSJNMzMuNjA3IDYuNjg0MUMzMy42NTU1IDYuNjYxNTEgMzMuNzAwNSA2LjY0MjE2IDMzLjc0NTYgNi42MTk1N0MzNi4yNTUgNS41MzE5MyAzOS4zMjU1IDQuOTgwMDUgNDIuODc2NCA0Ljk4MDA1QzQ2LjYwODEgNC45ODAwNSA0OS44MTc0IDUuNTk2NDkgNTIuNDEwNCA2LjgxMzE5QzU0LjMzOTEgNy43MTY4OCA1NS41NDU0IDguNzk4MDQgNTYuMDE5NSAxMC4wNDA2VjUuNDI1NDNINjcuMDc1OVYwLjY2MTgyNUg1Ni4wMTk1VjUuMjc2OTdDNTUuNTQ1NCA0LjAzNDQzIDU0LjMzOTEgMi45NTMyNiA1Mi40MTA0IDIuMDQ5NTlDNDkuODE0IDAuODMyODc1IDQ2LjYwNDkgMC4yMTY0NDYgNDIuODc2NCAwLjIxNjQ0NkMzOS4xNDgyIDAuMjE2NDQ2IDM2LjI1NSAwLjc2ODMyOSAzMy43NDU2IDEuODU1OTVDMzMuNjk3NCAxLjg3NTMyIDMzLjY1MjEgMS44OTc5MSAzMy42MDcgMS45MjA1VjAuNjU4NTk4SDAuMTA1ODM1VjUuNDIyMjFIMzMuNjA3VjYuNjg0MVoiIGZpbGw9IiNGRjAwMDAiLz4KPHBhdGggZD0iTTc5LjEyODkgNS40MjU0NEg4NC43Mzc2TDkzLjg2NTEgMC42NjE4MTlINzkuMTI4OUw2Ny4wNzU4IDcuMTU4NTNWMTEuOTIyMUw3OS4xMjg5IDUuNDI1NDRaIiBmaWxsPSIjRkYwMDAwIi8+CjxwYXRoIGQ9Ik01Ni4wMTk2IDIzLjQwODRDNTUuMzg0MSAyMy45NDQxIDU0LjU5MzggMjQuNDQxMiA1My42NDU2IDI0Ljg5NjJDNTAuNzIzNiAyNi4yOTM2IDQ3LjE0NjggMjcuMDAwNSA0My4wMjE0IDI3LjAwMDVDMzkuMTQ0NyAyNy4wMDA1IDM1LjgxMyAyNi4zNjggMzMuMTIzMSAyNS4xMjIyQzMyLjE4MTQgMjQuNjg2MyAzMS4zODQ2IDI0LjE5NTkgMzAuNzM2MyAyMy42NTY5TDI4LjQ2ODkgMjMuODIxNUwyOC43MDc3IDI1LjE1NDRDMjkuMDU1OSAyNy4wOTcyIDMwLjU0MjkgMjguNjkxNiAzMy4xMjMxIDI5Ljg4NThDMzUuODEzIDMxLjEzMTQgMzkuMTQ0NyAzMS43NjQxIDQzLjAyMTQgMzEuNzY0MUM0Ny4xNDY4IDMxLjc2NDEgNTAuNzIzNiAzMS4wNTcyIDUzLjY0NTYgMjkuNjU5OUM1NC41OTM4IDI5LjIwOCA1NS4zODQxIDI4LjcxMSA1Ni4wMTk2IDI4LjE3MTlWMzEuNDQ0Nkg2Ny4wNzU3VjI2LjY4MUg1Ni4wMTk2VjIzLjQwODRaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik0yMi4zNTcxIDI2LjY4NDFIMTEuMzAwOFYzMS40NDc3SDIyLjM1NzFWMjYuNjg0MVoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTExLjMwMDggMTAuNDk1NkgwLjEwNTgzNVYxNS4yNTkySDExLjMwMDhWMTAuNDk1NloiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTQ0LjU0NyAxMC4xMDE5QzQ0LjA2OTggOS44Njk1MiA0My42MDUzIDkuNzc1OTIgNDIuOTQ3MyA5Ljc3NTkyQzQyLjI0NDMgOS43NzU5MiA0MS43NTA4IDkuODc5MiA0MS4yNDQ0IDEwLjEyNzdDNDAuNzg2NiAxMC4zNTM2IDQwLjE4MzMgMTAuODM3NyAzOS45MDI4IDExLjg2NzNMMzkuNjQxNCAxMi44MzIyTDQxLjY1MDcgMTIuOTA5N0M0My4xOTI1IDEyLjg5NjggNDMuOTI3OCAxMi42NTQ3IDQ0LjM1MDMgMTIuNDcwOEM0NC43NzI4IDEyLjI4NjggNDUuMzM0MiAxMS45NjA4IDQ1LjMzNDIgMTEuMjI4MkM0NS4zMzQyIDEwLjQ5NTYgNDQuNzQ0IDEwLjE5NTUgNDQuNTQ3IDEwLjEwMTlaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik01NC41ODEgMTQuMjUyM0M1NC4zMzI3IDE0LjQ0OTIgNTQuMDYxNiAxNC42MzMxIDUzLjc2ODIgMTQuODEzOUM1My44Mjk1IDE0LjgzOTcgNTMuODkwOCAxNC44NjU1IDUzLjk1MjEgMTQuODkxM0M1NC43NDU1IDE1LjIzNjYgNTUuNDM1NyAxNS42NDk4IDU2LjAxOTMgMTYuMTI0MlYxMi40NTc5QzU1Ljc1ODIgMTMuMTAzNCA1NS4yODA5IDEzLjcwMzcgNTQuNTgxIDE0LjI1NTVWMTQuMjUyM1oiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTM5LjQ1NDMgMTkuNzM4OEM0MC4zNDEyIDIyLjIwNDUgNDIuMjM0NSAyMi4yMDQ1IDQyLjk0NzMgMjIuMjA0NUM0My42MDg0IDIyLjIwNDUgNDQuNDk4OCAyMi4xMzY4IDQ1LjUyNDMgMjEuNjEzOUM0Ni40MjQzIDIxLjE1MjQgNDYuODYyOCAyMC41MzkyIDQ2Ljg2MjggMTkuNzMyNEM0Ni44NjI4IDE4Ljk5NjUgNDYuNDg1NCAxOC40NDc5IDQ1LjcwODIgMTguMDUwOUM0NS4wMjExIDE3LjcwMjQgNDQuMzIxMiAxNy41NTA3IDQzLjM2NjcgMTcuNTUwN0M0My4xMDg2IDE3LjU1MDcgNDIuNTAyMiAxNy41NzMzIDQxLjM3MzMgMTcuNzM0NkwzNi41NjQ1IDE4LjQyMjFMMzcuODEyNyAxMy4yOTA1TDI4LjcxNCAxMi40MTI3TDI5LjE2NTYgMTEuMDY2OUMyOS4yMzM1IDEwLjg3IDI5LjMxMDggMTAuNjc5NiAyOS4zOTQ2IDEwLjQ4OTJIMjIuMzU3MVYxNS4yNTI4SDI4LjY0MzFMMjguNzA3NyAxNS42MjA3QzI4LjkzMDIgMTYuODUzNiAyOS42MDc1IDE3Ljk0NzYgMzAuNzM2MyAxOC44ODY4TDM4LjkzODIgMTguMjkzTDM5LjQ1NzcgMTkuNzMyNEwzOS40NTQzIDE5LjczODhaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik02OC44Nzg4IDE4LjQ2NEw2Ny4wNzU4IDE5LjQwMzJWMjQuMTY2OEw2OC44Nzg4IDIzLjIyNzZMNzkuNTY3NCAzMS40NDc4SDkzLjIxNjhMODYuNzE0OCAyNi42ODQxSDc5LjU2NzRMNjguODc4OCAxOC40NjRaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik04NC43Mzc3IDUuNDI1NDJINzkuMTI4OUw2Ny4wNzU5IDExLjkyMjFWNS40MjU0Mkg1Ni4wMTk1VjEwLjA0MDZDNTUuNTQ1NCA4Ljc5ODAzIDU0LjMzOTEgNy43MTY4NyA1Mi40MTA0IDYuODEzMjFDNDkuODE0IDUuNTk2NDggNDYuNjA0OSA0Ljk4MDA0IDQyLjg3NjQgNC45ODAwNEMzOS4xNDgyIDQuOTgwMDQgMzYuMjU1IDUuNTMxOTIgMzMuNzQ1NiA2LjYxOTU2QzMzLjY5NzQgNi42Mzg5MyAzMy42NTIxIDYuNjYxNTIgMzMuNjA3IDYuNjg0MDlWNS40MjIySDAuMTA1ODM1VjEwLjQ5MjRIMTEuMzAwOFYyNi42Nzc4SDIyLjM1NzJWMTAuNDkyNEgyOS4zOTQ3QzI5LjMxMDkgMTAuNjc5NiAyOS4yMzAyIDEwLjg3MzIgMjkuMTY1OCAxMS4wNzAxTDI4LjcxNDIgMTIuNDE1OUwzNy44MTI4IDEzLjI5MzhMMzYuNTY0NiAxOC40MjUzTDQxLjM3MzQgMTcuNzM3OUM0Mi41MDI0IDE3LjU3NjUgNDMuMTA1NCAxNy41NTM5IDQzLjM2NjggMTcuNTUzOUM0NC4zMjEzIDE3LjU1MzkgNDUuMDIxMiAxNy43MDI0IDQ1LjcwODMgMTguMDU0MUM0Ni40ODU1IDE4LjQ1MTEgNDYuODYzIDE4Ljk5OTggNDYuODYzIDE5LjczNTZDNDYuODYzIDIwLjU0MjUgNDYuNDI0MiAyMS4xNTg5IDQ1LjUyNDQgMjEuNjE3MkM0NC40OTg5IDIyLjE0MzIgNDMuNjA4NiAyMi4yMDc4IDQyLjk0NzQgMjIuMjA3OEM0Mi4yMzQ3IDIyLjIwNzggNDAuMzQxMyAyMi4yMDc4IDM5LjQ1NDQgMTkuNzQyMUwzOC45MzUyIDE4LjMwMjdMMzAuNzMzMiAxOC44OTY1TDI4LjQ2NTggMTkuMDYxMUwyOC43MDQ1IDIwLjM5NEMyOC45MjcxIDIxLjYyNjkgMjkuNjA0NSAyMi43MjA5IDMwLjczMzIgMjMuNjYwMUMzMS4zODE1IDI0LjE5OTEgMzIuMTc4MSAyNC42ODk3IDMzLjEyMDEgMjUuMTI1M0MzNS44MSAyNi4zNzExIDM5LjE0MTYgMjcuMDAzNiA0My4wMTg0IDI3LjAwMzZDNDcuMTQzNSAyNy4wMDM2IDUwLjcyMDMgMjYuMjk3IDUzLjY0MjYgMjQuODk5NEM1NC41OTA4IDI0LjQ0NDQgNTUuMzgwOSAyMy45NTA2IDU2LjAxNjMgMjMuNDExNlYyNi42ODQxSDY3LjA3MjdWMTkuNDA2NEw2OC44NzIzIDE4LjQ2NzJMNzkuNTY0MyAyNi42ODczSDkzLjIxMzdMNzYuNTM4OCAxNC40Njg1TDkzLjg2MiA1LjQyODY1SDg0LjczNDNMODQuNzM3NyA1LjQyNTQyWk00NC4zNTA0IDEyLjQ3MDhDNDMuOTI3OSAxMi42NTQ4IDQzLjE5MjYgMTIuODk2OCA0MS42NTA4IDEyLjkwOTdMMzkuNjQxNCAxMi44MzIzTDM5LjkwMjggMTEuODY3M0M0MC4xODM0IDEwLjgzNzcgNDAuNzg2NCAxMC4zNTM2IDQxLjI0NDUgMTAuMTI3N0M0MS43NTA5IDkuODc1OTcgNDIuMjQ0NCA5Ljc3NTkyIDQyLjk0NzQgOS43NzU5MkM0My42MDU0IDkuNzc1OTIgNDQuMDY2NyA5Ljg2OTUyIDQ0LjU0NzEgMTAuMTAxOUM0NC43NDA3IDEwLjE5NTUgNDUuMzM0MiAxMC40ODI3IDQ1LjMzNDIgMTEuMjI4M0M0NS4zMzQyIDExLjk3MzggNDQuNzcyOSAxMi4yODY4IDQ0LjM1MDQgMTIuNDcwOFpNNTYuMDE5NSAxNi4xMjQyQzU1LjQzNTkgMTUuNjQ5OCA1NC43NDU2IDE1LjIzNjYgNTMuOTUyMiAxNC44OTEzQzUzLjg5MDkgMTQuODY1NSA1My44Mjk2IDE0LjgzOTcgNTMuNzY4MyAxNC44MTM5QzU0LjA2MTcgMTQuNjM2NCA1NC4zMzI4IDE0LjQ0OTIgNTQuNTgxMSAxNC4yNTIzQzU1LjI4MSAxMy43MDA0IDU1Ljc2MTUgMTMuMTAwMSA1Ni4wMTk1IDEyLjQ1NDdWMTYuMTIxVjE2LjEyNDJaIiBmaWxsPSIjRkZGRjAwIi8+CjwvZz4KPGRlZnM+CjxjbGlwUGF0aCBpZD0iY2xpcDBfMzU4Nl85Njc4Ij4KPHJlY3Qgd2lkdGg9Ijk0IiBoZWlnaHQ9IjMyIiBmaWxsPSJ3aGl0ZSIvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo="); }
+.partners { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; }
+.partners .t3k-logo { height: 22px; }
+label.opt { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.slot { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.slot.drag { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.slot .head { display: flex; gap: 8px; align-items: center; }
+.slot .num { font-weight: 700; color: var(--accent); width: 1.4em; }
+.slot input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: transparent;
+       border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+.slot canvas { display: block; width: 100%; height: 90px; margin: 8px 0 4px; }
+.slot .info { font-size: 12px; color: var(--muted); min-height: 4.3em; }
+.slot .info .warn { color: var(--warn); }
+.slot .acts { display: flex; gap: 6px; margin-top: 6px; }
+.slot .acts button, .slot .acts .btn { font-size: 13px; padding: 4px 9px; }
+.msg { margin: 14px 0 0; min-height: 1.4em; }
+.msg.err { color: var(--warn); }
+.write { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 20px 0 8px; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-top: 16px; }
+details summary { cursor: pointer; font-weight: 600; }
+details li { margin: 4px 0; }
+code { font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>IR Loader Tool</h1>
+  <p class="sub">Put your own cab IRs into the IRLoader effect for the Zoom MS-60B+: 8 slots. Each IR is fitted to what the effect plays, a 64-tap FIR plus 16 biquads, which costs about a third of the DSP of a long convolution. Drop WAV files on a slot, or on the page to fill the slots from the first free one.</p>
+
+  <div class="bar">
+    <span class="base" id="base">Base: built-in IRLOADER.ZD2</span>
+    <label class="btn">Open IRLOADER.ZD2…<input type="file" id="openZd2" accept=".ZD2,.zd2" hidden></label>
+    <label class="opt"><input type="checkbox" id="optTrim" checked> Trim silence at the start</label>
+    <label class="opt"><input type="checkbox" id="optNorm" checked> Match loudness</label>
+    <span id="t3k" hidden><button id="t3kGo" aria-label="Browse TONE3000…">Browse <span class="t3k-logo" role="img" aria-label="TONE3000"></span>…</button>
+      <a class="opt" href="https://www.tone3000.com" target="_blank" rel="noopener" style="color:var(--accent)">Powered by TONE3000</a></span>
+  </div>
+  <div id="t3kTone"></div>
+  <div class="legend" aria-hidden="true"><span><i class="ref"></i>your IR, 1/6 octave</span><span><i></i>what the effect plays</span><span>20 Hz – 20 kHz, +15 to −30 dB; the deviation counts from 40 Hz to 6 kHz</span></div>
+
+  <div class="grid" id="slots"></div>
+
+  <div class="write">
+    <button class="primary" id="write">Write IRLOADER.ZD2 + IRLOADER.ZIC</button>
+    <button id="send" hidden>Send to the installer</button>
+    <span class="base">Two files are downloaded. Your browser may ask to allow more than one download.</span>
+  </div>
+  <p class="msg" id="msg" role="status" aria-live="polite"></p>
+
+  <details>
+    <summary>Putting the effect onto the pedal</summary>
+    <ol>
+      <li>The new file has the same file name and id as the IRLoader on the pedal. Take IRLoader out of every patch (saved ones too), uninstall it, then install the new <code>IRLOADER.ZD2</code> + <code>IRLOADER.ZIC</code> with the Zoom MS Installer (or stomphacks' <code>pedal_diy.py</code>).</li>
+      <li>AUTO SAVE off, a backup of the pedal first. Try the effect in a patch you do not save, quietly at first; save it only after switching the pedal off and on once.</li>
+      <li>The IR knob picks the slot and shows its name (the slot's name field, up to 7 characters: letters, digits, space, . + -), Mix blends dry bass and cab, Level 80 is unity. The cab is mono: put IRLoader after the amp or drive and before stereo effects.</li>
+      <li>Untested on the pedal so far (prototype 0.21). It needs 1 KB of delay memory and declares a DSP load of 24 (of 270).</li>
+    </ol>
+  </details>
+  <details>
+    <summary>What happens to a WAV</summary>
+    <ul>
+      <li>Any sample rate and format the browser can read (WAV, AIFF, FLAC …) is resampled to 44.1 kHz; several channels are averaged.</li>
+      <li>Trim: everything before the first sample above 1 % of the peak goes, less 4 samples, so the cab lines up with the dry bass when Mix blends them. Up to 371 ms of the IR is kept.</li>
+      <li>The fit: the IR's magnitude, averaged over 1/6 octave, is matched by a 64-tap FIR (the first 1.45 ms of a cab and its broad shape) and 16 biquads (a high-pass, a low-pass and 14 peaks), the bass and the cab's high edge weighted most. The slot shows both curves and the largest deviation between 40 Hz and 6 kHz; above ±1.5 dB it warns. The same WAV always gives the same cab in the same browser.</li>
+      <li>Match loudness: the cab is scaled so that its mean power gain from 40 Hz to 5 kHz is 0 dB, so every slot plays about as loud as the dry bass.</li>
+      <li>An <code>IRLOADER.ZD2</code> of version 0.10 (1024-tap IRs) can be opened: its IRs are taken over and fitted; the file you write is version 0.21. Names longer than 7 characters are cut.</li>
+    </ul>
+  </details>
+  <details>
+    <summary>Where the method comes from</summary>
+    <ul>
+      <li>A short FIR plus biquads fitted to the smoothed magnitude: HYBRID IR by Leemuzhko (github.com/Leemuzhko/HYBRID-IR, MIT) and the CabIR effect and <code>cab_loader.js</code> by Roman Rusinov (github.com/themanro/ZoomMultistompZDL, MIT), both for the older MultiStomp pedals. The code here is written anew.</li>
+      <li>The biquads run as state-variable filters after Andrew Simper (Cytomic, "Linear Trapezoidal Integrated SVF"): in single precision they stay far closer to the exact filter at bass frequencies than the usual biquad form.</li>
+      <li>The effect itself is built with stomphacks by Thomas Hammer (MIT).</li>
+    </ul>
+  </details>
+</main>
+
+<script id="core">
+/* The part without a browser API: also run by app/test_tool.mjs, app/fit_report.mjs
+ * and gen_tables.py (through node), so the slots built into the effect and the
+ * slots this tool writes come from the same code.
+ *
+ * A slot is a cab as the IRLoader 0.20 kernel plays it: a FIR of TAPS taps (the
+ * start of the cab and its broad shape) and a cascade of NBQ biquads (high-pass,
+ * low-pass, peaks), fitted to the 1/6-octave smoothed magnitude of an IR.
+ * The approach (a short FIR plus biquads fitted to the smoothed magnitude, by
+ * Levenberg-Marquardt) is the one of HYBRID IR (github.com/Leemuzhko/HYBRID-IR,
+ * MIT, Copyright (c) 2026 Leemuzhko) and of tools/cab_loader.js in
+ * github.com/themanro/ZoomMultistompZDL (MIT, Copyright (c) 2026 Roman
+ * Rusinov); the 1/6-octave power average and the projected LM step follow
+ * cab_loader.js. The code here is written anew. */
+const IRL = (() => {
+  // ---- the table the kernel reads (ir_tables.h is generated from these) ----
+  const SLOTS = 8, TAPS = 64, NBQ = 16, FS = 44100, LAYOUT = 2;
+  // A biquad is stored as the kernel runs it: a state-variable filter (the
+  // trapezoidal SVF of Andrew Simper, Cytomic), 6 numbers: k0 = 2 a1 - 1,
+  // k1 = 2 a2, k2 = 2 a3 (his a1..a3) for the states p, q, and d, c1, c2 for
+  // the output y = d u + c1 p + c2 q. Float32 keeps it 50 dB closer to
+  // double than a direct-form biquad at bass frequencies (irloader.c).
+  // A slot is the FIR, the biquads and one spare word: an odd stride, so the TI
+  // compiler cannot take a slot for 8-byte aligned and read it with LDDW (abi_check.py)
+  // The IR knob shows a slot's name from its value texts (manifest "values"): fields of
+  // LABEL_BYTES right after the table, so a name is 7 characters and a NUL at most
+  const SEC = 6, STRIDE = TAPS + SEC * NBQ + 1, HDR_WORDS = 8 + SLOTS * 4, NAME_BYTES = 16, LABEL_BYTES = 8;
+  const TAP_MAX = 8, A_MAX = 4, M_MAX = 64, R_MAX = 0.9999;    // the kernel plays a slot only inside these
+  const f32 = Math.fround, R2 = f32(R_MAX * R_MAX), RI = f32(1 / R_MAX), RF = f32(R_MAX);
+  // ---- loading (as 0.10) ----
+  const IR_MAX = 16384, FADE = 128, ONSET = 0.01, ONSET_MARGIN = 4, NAME_MAX = LABEL_BYTES - 1;
+  const LOUD_LO = 40, LOUD_HI = 5000, LOUD_N = 64;
+  // ---- the fit ----
+  const TOL_DB = 1.5, ERR_LO = 40, ERR_HI = 6000, NFFT = 65536, FRAC = 6, PPO = 40;
+  const PEAKS = NBQ - 2, ITERS = 150, MOVES = 10, MOVE_ITERS = 60;
+  const W_BAND = [[40, 0.7], [250, 2], [2000, 1.5], [6500, 2], [10000, 0.1], [Infinity, 0.03]];
+  const LIM = { hp: { f: [15, 300], q: [0.4, 1.5] }, lp: { f: [1200, 18000], q: [0.4, 2] },
+                pk: { f: [30, 8000], q: [0.3, 6], g: [-18, 15] } };
+  const SRC1 = { magic: "IRL1", slots: 8, taps: 1024, layout: 1, hdr: 36 };    // IRLoader 0.10
+  const DESC_RE = /\(IRs: [^)]*\)/g;
+
+  class IRError extends Error {}
+
+  // ---------------------------------------------------------------- bytes
+  const ascii = s => Uint8Array.from(s, c => c.charCodeAt(0));
+  const u32 = (b, o) => (b[o] | b[o + 1] << 8 | b[o + 2] << 16 | b[o + 3] << 24) >>> 0;
+  const put32 = (b, o, v) => { b[o] = v & 255; b[o + 1] = v >>> 8 & 255; b[o + 2] = v >>> 16 & 255; b[o + 3] = v >>> 24 & 255; };
+  const tag = (b, o) => String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3]);
+
+  let crcT = null;
+  function crc32(b) {
+    if (!crcT) {
+      crcT = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        crcT[n] = c >>> 0;
+      }
+    }
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < b.length; i++) c = crcT[(c ^ b[i]) & 255] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  // the ZD2 checksum: CRC32 over data[12:-16], stored inverted (as keywave_tables.py)
+  const zd2Crc = b => (crc32(b.subarray(12, b.length - 16)) ^ 0xFFFFFFFF) >>> 0;
+
+  function find(b, pat, from, to) {
+    const hits = [];
+    outer: for (let i = from; i + pat.length <= to; i++) {
+      for (let j = 0; j < pat.length; j++) if (b[i + j] !== pat[j]) continue outer;
+      hits.push(i);
+    }
+    return hits;
+  }
+
+  // -> [{tag, off, len}]: tiles the file from ICON to the 16-byte trailer
+  function sections(b) {
+    const first = find(b, ascii("ICON"), 0, b.length)[0];
+    if (b.length < 32 || tag(b, 0) !== "ZDLF" || first === undefined) throw new IRError("not a ZD2 file");
+    const out = [];
+    let i = first;
+    while (i + 8 <= b.length - 16) {
+      const n = u32(b, i + 4);
+      if (i + 8 + n > b.length - 16) throw new IRError(`ZD2: section ${tag(b, i)} runs past the end of the file`);
+      out.push({ tag: tag(b, i), off: i + 8, len: n });
+      i += 8 + n;
+    }
+    if (i !== b.length - 16) throw new IRError("ZD2: the sections do not fill the file up to its end");
+    return out;
+  }
+
+  // the first words of the table: what the kernel checks (and the tool searches for)
+  function signature(layout) {
+    if (layout === 1) {
+      const s = new Uint8Array(16);
+      s.set(ascii(SRC1.magic)); put32(s, 4, SRC1.slots); put32(s, 8, SRC1.taps); put32(s, 12, SRC1.layout);
+      return s;
+    }
+    const s = new Uint8Array(32);
+    s.set(ascii("IRL2"));
+    [LAYOUT, SLOTS, TAPS, NBQ, STRIDE, FS, 0].forEach((v, i) => put32(s, 4 + 4 * i, v));
+    return s;
+  }
+  // the table header as 32-bit words (gen_tables.py writes it so)
+  const headerWords = () => { const s = signature(2); return Array.from({ length: 8 }, (_, i) => u32(s, 4 * i)); };
+
+  function text(b, sec) {
+    let s = "";
+    for (let i = sec.off; i < sec.off + sec.len && b[i] !== 0; i++) s += String.fromCharCode(b[i]);
+    return s;
+  }
+
+  // where the slots are in an IRLOADER.ZD2 (0.20, or 0.10 to take its IRs over); refuses anything else
+  function locate(b) {
+    const secs = sections(b);
+    if (u32(b, 8) !== zd2Crc(b)) throw new IRError("the checksum of the ZD2 is wrong: is the file damaged?");
+    const data = secs.filter(s => s.tag === "DATA");
+    if (data.length !== 1) throw new IRError(`the ZD2 has ${data.length} DATA sections (expected: one)`);
+    const d = data[0];
+    if (tag(b, d.off) !== "\x7fELF") throw new IRError("the DATA section of the ZD2 is not an ELF");
+    const txe = secs.find(s => s.tag === "TXE1");
+    if (!txe || (text(b, txe).match(DESC_RE) || []).length !== 1)
+      throw new IRError("the description of the ZD2 does not list its IRs: is it an IRLoader effect?");
+    for (const layout of [2, 1]) {
+      const hits = find(b, signature(layout), d.off, d.off + d.len);
+      if (!hits.length) continue;
+      if (hits.length !== 1) throw new IRError(`the IR table is in the file ${hits.length} times (expected once)`);
+      const hdr = hits[0], words = layout === 2 ? HDR_WORDS + SLOTS * STRIDE : SRC1.hdr + SRC1.slots * SRC1.taps;
+      if (hdr + 4 * words > d.off + d.len) throw new IRError("the IR table runs past the end of the effect");
+      const L = { secs, layout, hdr, data: hdr + 4 * (layout === 2 ? HDR_WORDS : SRC1.hdr), names: hdr + (layout === 2 ? 32 : 16), txe };
+      if (layout === 1) return L;
+      // the IR knob's value texts: the build puts them right after the table (zd2_cleanroom.py
+      // emits them after const_blob; test_tool.mjs checks it against the build's symbols)
+      L.labels = hdr + 4 * words;
+      const isLabel = o => { let n = 0; while (n < LABEL_BYTES && b[o + n] >= 0x20 && b[o + n] < 0x7f) n++;
+                             return n >= 1 && n < LABEL_BYTES && b.subarray(o + n, o + LABEL_BYTES).every(v => v === 0); };
+      for (let s = 0; s < SLOTS; s++)
+        if (L.labels + LABEL_BYTES * (s + 1) > d.off + d.len || !isLabel(L.labels + LABEL_BYTES * s))
+          throw new IRError("the IR knob's names are not right after the IR table: is it an IRLoader 0.20 or later?");
+      return L;
+    }
+    throw new IRError("no IR table found: is it an IRLoader effect (0.10 or 0.20)?");
+  }
+
+  // -> {layout, slots}. Layout 2: [{name, fir (time order), sos}]; layout 1 (0.10): [{name, ir (1024 taps)}]
+  function readSlots(b) {
+    const L = locate(b), dv = new DataView(b.buffer, b.byteOffset, b.byteLength), out = [];
+    for (let s = 0; s < SLOTS; s++) {
+      let name = "";
+      for (let i = 0; i < NAME_BYTES && b[L.names + NAME_BYTES * s + i]; i++) name += String.fromCharCode(b[L.names + NAME_BYTES * s + i]);
+      const at = k => dv.getFloat32(k, true);
+      if (L.layout === 1) {
+        const ir = new Float32Array(SRC1.taps);
+        for (let k = 0; k < SRC1.taps; k++) ir[k] = at(L.data + 4 * (s * SRC1.taps + SRC1.taps - 1 - k));
+        out.push({ name, ir });
+        continue;
+      }
+      const o = L.data + 4 * s * STRIDE, fir = new Float32Array(TAPS), sos = new Float32Array(SEC * NBQ);
+      for (let k = 0; k < TAPS; k++) fir[k] = at(o + 4 * (TAPS - 1 - k));
+      for (let k = 0; k < SEC * NBQ; k++) sos[k] = at(o + 4 * (TAPS + k));
+      const slot = { name, fir, sos };
+      checkSlot(slot, s);
+      out.push(slot);
+    }
+    return { layout: L.layout, slots: out };
+  }
+
+  // letters, digits, space and . + - (_ becomes -: Zoom's own value texts never use _);
+  // at most NAME_MAX, what the IR knob shows; no space or dot at the ends
+  function cleanName(s) {
+    const n = String(s || "").replace(/_/g, "-").replace(/[^A-Za-z0-9 .+-]/g, "").replace(/^[ .]+|[ .]+$/g, "")
+      .slice(0, NAME_MAX).replace(/[ .]+$/, "");
+    return n || "IR";
+  }
+
+  // what the kernel accepts, in float32 as it computes (irloader.c: the slot check):
+  // k0..k2 within A_MAX, d, c1, c2 within M_MAX, and both poles of the state
+  // update [[k0, -k1], [k1, 1 - k2]] inside radius R_MAX (Schur-Cohn, scaled)
+  function stable(k0, k1, k2) {
+    k0 = f32(k0); k1 = f32(k1); k2 = f32(k2);
+    const a1 = f32(f32(k2 - k0) - 1), a2 = f32(f32(k0 * f32(1 - k2)) + f32(k1 * k1));
+    const lim = f32(RF + f32(a2 * RI));
+    return a2 > -R2 && a2 < R2 && a1 < lim && a1 > -lim;
+  }
+  function checkSlot(s, i = 0) {
+    const where = `slot ${i + 1}`;
+    if (!s.fir || s.fir.length !== TAPS || !s.sos || s.sos.length !== SEC * NBQ) throw new IRError(`${where}: not ${TAPS} taps and ${NBQ} biquads`);
+    for (const v of s.fir) if (!(Math.abs(f32(v)) <= TAP_MAX)) throw new IRError(`${where}: a FIR tap is not a number or larger than ${TAP_MAX}`);
+    for (let k = 0; k < NBQ; k++) {
+      const c = Array.from(s.sos.slice(SEC * k, SEC * k + SEC), f32);
+      if (!c.slice(0, 3).every(v => Math.abs(v) <= A_MAX) || !c.slice(3).every(v => Math.abs(v) <= M_MAX))
+        throw new IRError(`${where}, biquad ${k + 1}: a coefficient is not a number or out of range`);
+      if (!stable(c[0], c[1], c[2])) throw new IRError(`${where}, biquad ${k + 1}: not stable with margin (a pole beyond radius ${R_MAX})`);
+    }
+    return s;
+  }
+
+  // a biquad [b0, b1, b2, a1, a2] (a0 = 1) as the kernel's state-variable filter:
+  // back through the bilinear transform to s^2 + k g s + g^2, then Simper's
+  // a1 = 1 / (1 + g (g + k)), a2 = g a1, a3 = g a2 and his output mix m0, m1, m2,
+  // written out in the states: y = m0 u + m1 v1 + m2 v2 = d u + c1 p + c2 q
+  function toSvf([b0, b1, b2, a1, a2]) {
+    const p0 = 1 + a1 + a2, p1 = 2 * (1 - a2), p2 = 1 - a1 + a2;
+    const g = Math.sqrt(p0 / p2), k = p1 / Math.sqrt(p0 * p2);
+    const n2 = (b0 - b1 + b2) / p2, n1 = 2 * (b0 - b2) / p2, n0 = (b0 + b1 + b2) / p2;
+    const m0 = n2, m1 = (n1 - m0 * k * g) / g, m2 = n0 / (g * g) - m0, s1 = 1 / (1 + g * (g + k));
+    const c0 = 2 * s1, c1 = 2 * g * s1, c2 = 2 * g * g * s1, h1 = m1 / 2, h2 = m2 / 2;
+    return [c0 - 1, c1, c2, m0 + h1 * c1 + h2 * c2, h1 * c0 + h2 * c1, h2 * (2 - c2) - h1 * c1];
+  }
+
+  // the bass unchanged: FIR = 1, every biquad passes (y = u exactly, both poles at 0)
+  function identity() {
+    const fir = new Float32Array(TAPS), sos = new Float32Array(SEC * NBQ);
+    fir[0] = 1;
+    for (let k = 0; k < NBQ; k++) sos.set([-0.5, 0.5, 0.5, 1, 0, 0], SEC * k);
+    return { fir, sos };
+  }
+  const isIdentity = s => { const t = identity(); return s.fir.every((v, i) => v === t.fir[i]) && s.sos.every((v, i) => v === t.sos[i]); };
+
+  // -> new ZD2 bytes with these 8 slots; only the table, the IR knob's names, the two descriptions and the checksum change
+  function patch(base, slots) {
+    if (slots.length !== SLOTS) throw new IRError(`${slots.length} slots, expected ${SLOTS}`);
+    const names = slots.map(s => cleanName(s.name));
+    slots.forEach((s, i) => checkSlot(s, i));
+    const L = locate(base);
+    if (L.layout !== 2) throw new IRError("the base file is an IRLoader 0.10: its IRs can be taken over, but it cannot be written to");
+    const b = base.slice(), dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    names.forEach((n, s) => {
+      const o = L.names + NAME_BYTES * s, d = L.data + 4 * s * STRIDE;
+      b.fill(0, o, o + NAME_BYTES);
+      b.set(ascii(n), o);
+      const lo = L.labels + LABEL_BYTES * s;     // what the IR knob shows
+      b.fill(0, lo, lo + LABEL_BYTES);
+      b.set(ascii(n), lo);
+      for (let k = 0; k < TAPS; k++) dv.setFloat32(d + 4 * (TAPS - 1 - k), slots[s].fir[k], true);
+      for (let k = 0; k < SEC * NBQ; k++) dv.setFloat32(d + 4 * (TAPS + k), slots[s].sos[k], true);
+    });
+    const desc = text(base, L.txe).replace(DESC_RE, "(IRs: " + names.map((n, i) => `${i + 1} ${n}`).join(", ") + ")");
+    const payload = new Uint8Array(desc.length + 1);
+    payload.set(ascii(desc));
+    const parts = [b.subarray(0, L.secs[0].off - 8)];
+    for (const s of sections(b)) {
+      const pl = s.tag === "TXE1" || s.tag === "TXJ1" ? payload : b.subarray(s.off, s.off + s.len);
+      const h = new Uint8Array(8);
+      h.set(ascii(s.tag)); put32(h, 4, pl.length);
+      parts.push(h, pl);
+    }
+    parts.push(b.subarray(b.length - 16));
+    const out = new Uint8Array(parts.reduce((a, p) => a + p.length, 0));
+    let o = 0;
+    for (const p of parts) { out.set(p, o); o += p.length; }
+    put32(out, 8, zd2Crc(out));
+    return out;
+  }
+
+  // ---------------------------------------------------------------- responses
+  // |H(f)|^2 of an IR (time order)
+  function irPower(ir, f) {
+    const w = -2 * Math.PI * f / FS;
+    let re = 0, im = 0;
+    for (let k = 0; k < ir.length; k++) { re += ir[k] * Math.cos(w * k); im += ir[k] * Math.sin(w * k); }
+    return re * re + im * im;
+  }
+  // |H|^2 at e^jw of one biquad as the kernel runs it: state update
+  // s' = [[k0, -k1], [k1, 1 - k2]] s + [k1, k2] u, output y = d u + c1 s1 + c2 s2
+  function svfPower(c, w) {
+    const [k0, k1, k2, D, C1, C2] = c, zr = Math.cos(w), zi = Math.sin(w);
+    const ar = zr - k0, dr = zr - (1 - k2);                       // zI - M = [[a, k1], [-k1, d]], a and d complex (imaginary part zi)
+    const detr = ar * dr - zi * zi + k1 * k1, deti = zi * (ar + dr);
+    const x1r = dr * k1 - k1 * k2, x1i = zi * k1;                  // adj(zI - M) B
+    const x2r = k1 * k1 + ar * k2, x2i = zi * k2;
+    const nr = C1 * x1r + C2 * x2r, ni = C1 * x1i + C2 * x2i, dd = detr * detr + deti * deti;
+    const hr = D + (nr * detr + ni * deti) / dd, hi = (ni * detr - nr * deti) / dd;
+    return hr * hr + hi * hi;
+  }
+  // |H(f)|^2 of a slot: FIR times the cascade
+  function slotPower(s, f) {
+    const w = 2 * Math.PI * f / FS;
+    let p = irPower(s.fir, f);
+    for (let k = 0; k < NBQ; k++) p *= svfPower(s.sos.slice(SEC * k, SEC * k + SEC), w);
+    return p;
+  }
+  // mean power gain over LOUD_N log-spaced frequencies, LOUD_LO..LOUD_HI (as 0.10)
+  function loudness(power) {
+    let t = 0;
+    for (let m = 0; m < LOUD_N; m++) t += power(LOUD_LO * (LOUD_HI / LOUD_LO) ** (m / (LOUD_N - 1)));
+    return t / LOUD_N;
+  }
+  const slotLoudness = s => loudness(f => slotPower(s, f));
+
+  const thru = () => { const ir = new Float32Array(1); ir[0] = 1; return ir; };
+
+  // mono samples at 44.1 kHz -> {ir (trimmed, at most IR_MAX), info}; as 0.10, longer
+  function processIR(x, opts = { trim: true }) {
+    let peak = 0;
+    for (const v of x) {
+      const a = Math.abs(v);
+      if (!Number.isFinite(a)) throw new IRError("the file holds samples that are not numbers");
+      if (a > peak) peak = a;
+    }
+    if (!(peak > 0)) throw new IRError("the file is silent");
+    let start = 0;
+    if (opts.trim) {
+      while (Math.abs(x[start]) < ONSET * peak) start++;
+      start = Math.max(0, start - ONSET_MARGIN);
+    }
+    const n = Math.min(IR_MAX, x.length - start), cut = x.length - start > IR_MAX, ir = new Float64Array(n);
+    for (let i = 0; i < n; i++) ir[i] = x[start + i];
+    if (cut) for (let i = n - FADE; i < n; i++) ir[i] *= 0.5 + 0.5 * Math.cos(Math.PI * (i - (n - FADE) + 1) / FADE);
+    return { ir, info: { trimmedMs: 1000 * start / FS, sourceMs: 1000 * x.length / FS, cut } };
+  }
+
+  // ---------------------------------------------------------------- the fit
+  function fftPow(x, nfft) {
+    const re = new Float64Array(nfft), im = new Float64Array(nfft);
+    for (let i = 0; i < Math.min(x.length, nfft); i++) re[i] = x[i];
+    for (let i = 1, j = 0; i < nfft; i++) {
+      let bit = nfft >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { const t = re[i]; re[i] = re[j]; re[j] = t; }
+    }
+    for (let len = 2; len <= nfft; len <<= 1) {
+      const ang = -2 * Math.PI / len, half = len >> 1;
+      for (let k = 0; k < half; k++) {
+        const wr = Math.cos(ang * k), wi = Math.sin(ang * k);
+        for (let i = k; i < nfft; i += len) {
+          const q = i + half, tr = re[q] * wr - im[q] * wi, ti = re[q] * wi + im[q] * wr;
+          re[q] = re[i] - tr; im[q] = im[i] - ti; re[i] += tr; im[i] += ti;
+        }
+      }
+    }
+    const p = new Float64Array(nfft / 2 + 1);
+    for (let k = 0; k <= nfft / 2; k++) p[k] = re[k] * re[k] + im[k] * im[k];
+    return p;
+  }
+  // 1/FRAC-octave power average of a bin spectrum, in dB, at freqs
+  function smoothBins(pow, freqs) {
+    const c = new Float64Array(pow.length + 1);
+    for (let i = 0; i < pow.length; i++) c[i + 1] = c[i] + pow[i];
+    const k = 2 ** (1 / (2 * FRAC)), df = FS / NFFT;
+    return freqs.map(f => {
+      let lo = Math.ceil(f / k / df), hi = Math.min(Math.floor(f * k / df), pow.length - 1);
+      if (hi < lo) lo = hi = Math.round(f / df);
+      return 10 * Math.log10(Math.max((c[hi + 1] - c[lo]) / (hi + 1 - lo), 1e-30));
+    });
+  }
+  const geom = (a, b, n) => Array.from({ length: n }, (_, i) => a * (b / a) ** (i / (n - 1)));
+
+  // RBJ cookbook -> [b0, b1, b2, a1, a2], a0 = 1
+  function biquad(type, f, q, g) {
+    const w = 2 * Math.PI * f / FS, c = Math.cos(w), al = Math.sin(w) / (2 * q), A = 10 ** (g / 40);
+    let b, a;
+    if (type === "hp") { b = [(1 + c) / 2, -(1 + c), (1 + c) / 2]; a = [1 + al, -2 * c, 1 - al]; }
+    else if (type === "lp") { b = [(1 - c) / 2, 1 - c, (1 - c) / 2]; a = [1 + al, -2 * c, 1 - al]; }
+    else { b = [1 + al * A, -2 * c, 1 - al * A]; a = [1 + al / A, -2 * c, 1 - al / A]; }
+    return [b[0] / a[0], b[1] / a[0], b[2] / a[0], a[1] / a[0], a[2] / a[0]];
+  }
+  const coefs = s => biquad(s.type, s.f, s.q, s.g);
+  const hasG = t => t === "pk";
+
+  function makeGrid() {
+    const grid = geom(25, 16000, Math.round(PPO * Math.log2(16000 / 25)) + 1);
+    const T = grid.map(f => {
+      const w = 2 * Math.PI * f / FS, ck = new Float64Array(TAPS), sk = new Float64Array(TAPS);
+      for (let k = 0; k < TAPS; k++) { ck[k] = Math.cos(w * k); sk[k] = Math.sin(w * k); }
+      return { c1: Math.cos(w), s1: Math.sin(w), c2: Math.cos(2 * w), s2: Math.sin(2 * w), ck, sk };
+    });
+    // the neighbours of each point within +-1/(2 FRAC) octave, weighted by f (FFT bins are linear in f)
+    const k = 2 ** (1 / (2 * FRAC));
+    const sm = grid.map(f => {
+      let j0 = 0;
+      while (grid[j0] < f / k * 0.9999) j0++;
+      const cs = [];
+      for (let j = j0; j < grid.length && grid[j] <= f * k * 1.0001; j++) cs.push(grid[j]);
+      return [j0, Float64Array.from(cs)];
+    });
+    const w = grid.map(f => W_BAND.find(([top]) => f < top)[1]);
+    return { grid, T, sm, w };
+  }
+
+  function secDb(co, T, out) {
+    const [b0, b1, b2, a1, a2] = co;
+    for (let i = 0; i < T.length; i++) {
+      const t = T[i], nr = b0 + b1 * t.c1 + b2 * t.c2, ni = b1 * t.s1 + b2 * t.s2, dr = 1 + a1 * t.c1 + a2 * t.c2, di = a1 * t.s1 + a2 * t.s2;
+      out[i] = 10 * Math.log10(Math.max((nr * nr + ni * ni) / (dr * dr + di * di), 1e-30));
+    }
+    return out;
+  }
+  function firDb(h, T, out, fr, fi) {
+    for (let i = 0; i < T.length; i++) {
+      let r = 0, m = 0;
+      const t = T[i];
+      for (let k = 0; k < h.length; k++) { r += h[k] * t.ck[k]; m -= h[k] * t.sk[k]; }
+      fr[i] = r; fi[i] = m;
+      out[i] = 10 * Math.log10(Math.max(r * r + m * m, 1e-30));
+    }
+  }
+
+  function packSec(secs) {
+    const p = [], lo = [], hi = [];
+    for (const s of secs) {
+      const L = LIM[s.type];
+      p.push(Math.log(s.f)); lo.push(Math.log(L.f[0])); hi.push(Math.log(L.f[1]));
+      if (hasG(s.type)) { p.push(s.g); lo.push(L.g[0]); hi.push(L.g[1]); }
+      p.push(Math.log(s.q)); lo.push(Math.log(L.q[0])); hi.push(Math.log(L.q[1]));
+    }
+    return { p, lo, hi };
+  }
+  function unpackSec(secs, p, at = 0) {
+    let i = at;
+    return secs.map(s => { const f = Math.exp(p[i++]), g = hasG(s.type) ? p[i++] : 0, q = Math.exp(p[i++]); return { type: s.type, f, g, q }; });
+  }
+
+  // Gaussian elimination with partial pivoting; null if singular
+  function solve(A, b) {
+    const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+    for (let c = 0; c < n; c++) {
+      let p = c;
+      for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+      [M[c], M[p]] = [M[p], M[c]];
+      if (Math.abs(M[c][c]) < 1e-300) return null;
+      for (let r = c + 1; r < n; r++) { const f = M[r][c] / M[c][c]; if (f) for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; }
+    }
+    const x = new Array(n).fill(0);
+    for (let r = n - 1; r >= 0; r--) { let s = M[r][n]; for (let k = r + 1; k < n; k++) s -= M[r][k] * x[k]; x[r] = s / M[r][r]; }
+    return x;
+  }
+
+  // Levenberg-Marquardt with box bounds: the sections (and all FIR taps when
+  // fitFir, else only tap 0, the level), the model smoothed as the target is
+  function lmFit(G, t, secs, fir, fitFir, iters) {
+    const { T, sm, w } = G, N = T.length, ns = secs.length, K = 10 / Math.LN10;
+    let { p, lo, hi } = packSec(secs);
+    const nb = p.length, nf = fitFir ? TAPS : 1;
+    p = [...p, ...Array.from(fir.slice(0, nf))];
+    lo = [...lo, ...new Array(nf).fill(-4)];
+    hi = [...hi, ...new Array(nf).fill(4)];
+    const P = p.length, sd = Array.from({ length: ns }, () => new Float64Array(N));
+    const fd = new Float64Array(N), fr = new Float64Array(N), fi = new Float64Array(N), pw = new Float64Array(N);
+    const h = Float64Array.from(fir), col = new Float64Array(N), tmp = new Float64Array(N);
+    const smoothCol = src => {
+      const out = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        const [j0, cs] = sm[i];
+        let a = 0, b = 0;
+        for (let k = 0; k < cs.length; k++) { const q = cs[k] * pw[j0 + k]; a += q * src[j0 + k]; b += q; }
+        out[i] = w[i] * a / b;
+      }
+      return out;
+    };
+    const evalAll = q => {
+      unpackSec(secs, q).forEach((s, j) => secDb(coefs(s), T, sd[j]));
+      for (let k = 0; k < nf; k++) h[k] = q[nb + k];
+      firDb(h, T, fd, fr, fi);
+      for (let i = 0; i < N; i++) { let m = fd[i]; for (let j = 0; j < ns; j++) m += sd[j][i]; pw[i] = 10 ** (m / 10); }
+      const r = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        const [j0, cs] = sm[i];
+        let a = 0, b = 0;
+        for (let k = 0; k < cs.length; k++) { a += cs[k] * pw[j0 + k]; b += cs[k]; }
+        r[i] = w[i] * (10 * Math.log10(a / b) - t[i]);
+      }
+      return r;
+    };
+    const sum2 = r => { let s = 0; for (const v of r) s += v * v; return s; };
+    let r = evalAll(p), cost = sum2(r), lam = 1e-3;
+    for (let it = 0; it < iters; it++) {
+      const J = [];
+      let pi = 0;
+      unpackSec(secs, p).forEach((s, j) => {
+        const npar = hasG(s.type) ? 3 : 2;
+        for (let a = 0; a < npar; a++, pi++) {
+          const q = p.slice(), d = hasG(s.type) && a === 1 ? 1e-4 : 1e-6;
+          q[pi] += d;
+          secDb(coefs(unpackSec([secs[j]], q, pi - a)[0]), T, tmp);
+          for (let i = 0; i < N; i++) col[i] = (tmp[i] - sd[j][i]) / d;
+          J.push(smoothCol(col));
+        }
+      });
+      for (let k = 0; k < nf; k++) {
+        for (let i = 0; i < N; i++) col[i] = K * 2 * (fr[i] * T[i].ck[k] - fi[i] * T[i].sk[k]) / Math.max(fr[i] * fr[i] + fi[i] * fi[i], 1e-30);
+        J.push(smoothCol(col));
+      }
+      const A = Array.from({ length: P }, () => new Array(P));
+      for (let a = 0; a < P; a++) {
+        const x = J[a];
+        for (let b = a; b < P; b++) { const y = J[b]; let s = 0; for (let i = 0; i < N; i++) s += x[i] * y[i]; A[a][b] = A[b][a] = s; }
+      }
+      const g = J.map(x => { let s = 0; for (let i = 0; i < N; i++) s += x[i] * r[i]; return -s; });
+      let ok = false;
+      for (let tries = 0; tries < 10 && !ok; tries++) {
+        const d = solve(A.map((row, a) => row.map((v, b) => a === b ? v * (1 + lam) + 1e-9 : v)), g);
+        if (d) {
+          const q = p.map((v, i) => Math.min(hi[i], Math.max(lo[i], v + d[i]))), rq = evalAll(q), c = sum2(rq);
+          if (c < cost) {
+            if ((cost - c) / cost < 1e-9) it = iters;
+            p = q; r = rq; cost = c; lam = Math.max(lam / 3, 1e-9); ok = true;
+            continue;
+          }
+        }
+        lam *= 4;
+      }
+      evalAll(p);        // sd, fd, fr, fi, pw back to p
+      if (!ok) break;
+    }
+    const out = Float64Array.from(fir);
+    for (let k = 0; k < nf; k++) out[k] = p[nb + k];
+    return { secs: unpackSec(secs, p), fir: out, cost };
+  }
+
+  function modelDb(G, secs, fir) {
+    const { T, sm } = G, N = T.length, m = new Float64Array(N), tmp = new Float64Array(N);
+    firDb(fir, T, m, new Float64Array(N), new Float64Array(N));
+    for (const s of secs) { secDb(coefs(s), T, tmp); for (let i = 0; i < N; i++) m[i] += tmp[i]; }
+    const pw = m.map(v => 10 ** (v / 10));
+    return m.map((_, i) => {
+      const [j0, cs] = sm[i];
+      let a = 0, b = 0;
+      for (let k = 0; k < cs.length; k++) { a += cs[k] * pw[j0 + k]; b += cs[k]; }
+      return 10 * Math.log10(a / b);
+    });
+  }
+
+  // 1/6-octave smoothed dB of a slot and of an IR on the report grid, and the
+  // largest deviation 40 Hz..6 kHz once both are at the same loudness
+  const REPORT_F = geom(20, 20000, 241);
+  function compare(irPow, slot) {
+    const df = FS / NFFT, kmax = Math.min(NFFT / 2, Math.ceil(20500 / df)), mp = new Float64Array(NFFT / 2 + 1);
+    for (let k = 1; k <= kmax; k++) mp[k] = slotPower(slot, k * df);
+    const t = smoothBins(irPow, REPORT_F), m = smoothBins(mp, REPORT_F);
+    const band = (A) => { let s = 0, n = 0; REPORT_F.forEach((f, i) => { if (f >= LOUD_LO && f <= LOUD_HI) { s += 10 ** (A[i] / 10); n++; } }); return 10 * Math.log10(s / n); };
+    const lt = band(t), lm = band(m);
+    let maxDb = 0, atHz = 0, bassDb = 0, rms = 0, n = 0;
+    REPORT_F.forEach((f, i) => {
+      t[i] -= lt; m[i] -= lm;
+      if (f < ERR_LO || f > ERR_HI) return;
+      const e = m[i] - t[i];
+      if (Math.abs(e) > Math.abs(maxDb)) { maxDb = e; atHz = f; }
+      if (f <= 250 && Math.abs(e) > Math.abs(bassDb)) bassDb = e;
+      rms += e * e; n++;
+    });
+    return { maxDb, atHz, bassDb, rmsDb: Math.sqrt(rms / n), ok: Math.abs(maxDb) <= TOL_DB,
+             curves: { f: REPORT_F, ir: Array.from(t), fit: Array.from(m) } };
+  }
+
+  // the slot curve alone (a slot read from a file has no IR to compare with)
+  function slotCurve(slot) {
+    const df = FS / NFFT, kmax = Math.ceil(20500 / df), mp = new Float64Array(NFFT / 2 + 1);
+    for (let k = 1; k <= kmax; k++) mp[k] = slotPower(slot, k * df);
+    const m = smoothBins(mp, REPORT_F);
+    let s = 0, n = 0;
+    REPORT_F.forEach((f, i) => { if (f >= LOUD_LO && f <= LOUD_HI) { s += 10 ** (m[i] / 10); n++; } });
+    const l = 10 * Math.log10(s / n);
+    return { f: REPORT_F, fit: m.map(v => v - l) };
+  }
+
+  // the slot as the kernel stores it: sections ordered HP, LP, cuts, boosts
+  // (internal levels stay low), as state-variable filters, float32, and the
+  // level (loudness 1 if normalize)
+  function toSlot(secs, fir, normalize) {
+    const order = { hp: 0, lp: 1, pk: 2 };
+    const sorted = secs.slice().sort((a, b) => order[a.type] - order[b.type] || (a.type === "pk" ? a.g - b.g : 0) || a.f - b.f);
+    const sos = identity().sos;
+    sorted.forEach((s, k) => sos.set(toSvf(coefs(s)), SEC * k));
+    let slot = { fir: Float32Array.from(fir), sos };
+    if (normalize) {
+      const l = slotLoudness(slot);
+      if (!(l > 1e-12)) throw new IRError("nothing of this IR is left between 40 Hz and 5 kHz");
+      slot = { fir: Float32Array.from(fir, v => v / Math.sqrt(l)), sos };
+    }
+    try { checkSlot(slot); }       // the bounds of the fit keep every pole well inside; checked as the kernel does
+    catch (e) { throw new IRError("the fit does not fit the effect's limits (" + e.message.replace(/^slot 1(, )?/, "") + "): try another IR, or Match loudness"); }
+    return slot;
+  }
+
+  // an IR (time order, 44.1 kHz) -> {slot: {fir, sos}, report}; deterministic
+  function fit(ir, opts = { normalize: true }) {
+    if (ir.length === 1 || (ir[0] === 1 && ir.every((v, i) => i === 0 || v === 0))) {     // Thru
+      const slot = identity();
+      return { slot, report: compare(fftPow(ir, NFFT), slot) };
+    }
+    const G = makeGrid(), pow = fftPow(ir, NFFT), t = smoothBins(pow, G.grid), { grid, w } = G;
+    const mean = (a, b) => { let s = 0, n = 0; grid.forEach((f, i) => { if (f >= a && f <= b) { s += t[i]; n++; } }); return s / n; };
+    const Lb = mean(60, 200), Lm = mean(300, 2000);
+    let fhp = 40, flp = 5000;
+    for (let i = grid.length - 1; i >= 0; i--) if (grid[i] < 100 && t[i] < Lb - 6) { fhp = grid[i] * 1.3; break; }
+    for (let i = 0; i < grid.length; i++) if (grid[i] > 1500 && t[i] < Lm - 10) { flp = grid[i]; break; }
+    const clampF = (type, f) => Math.min(LIM[type].f[1], Math.max(LIM[type].f[0], f));
+    let fir = new Float64Array(TAPS);
+    fir[0] = Math.min(4, 10 ** (Lm / 20));
+    let res = lmFit(G, t, [{ type: "hp", f: clampF("hp", fhp), q: 0.7, g: 0 }, { type: "lp", f: clampF("lp", flp), q: 0.7, g: 0 }], fir, false, 60);
+    // where the model is furthest off, in band (weighted)
+    const worst = r => {
+      const m = modelDb(G, r.secs, r.fir);
+      let bi = 0, bv = -1;
+      grid.forEach((f, i) => { if (f < 30 || f > 7000) return; const e = Math.abs(w[i] * (t[i] - m[i])); if (e > bv) { bv = e; bi = i; } });
+      return { f: grid[bi], g: Math.max(-17, Math.min(14, t[bi] - m[bi])) };
+    };
+    for (let k = 0; k < PEAKS; k++) {
+      const { f, g } = worst(res);
+      res = lmFit(G, t, [...res.secs, { type: "pk", f, q: 2, g }], res.fir, false, 40);
+    }
+    res = lmFit(G, t, res.secs, res.fir, true, ITERS);
+    // moves: the weakest peak goes where the model is furthest off; kept if the fit gets better
+    for (let mv = 0; mv < MOVES; mv++) {
+      let jw = -1, sw = Infinity;
+      res.secs.forEach((s, j) => { if (s.type !== "pk") return; const sc = Math.abs(s.g) * Math.min(s.q, 1.5); if (sc < sw) { sw = sc; jw = j; } });
+      const { f, g } = worst(res);
+      const cand = lmFit(G, t, res.secs.map((s, j) => j === jw ? { type: "pk", f, q: 2, g } : s), res.fir, true, MOVE_ITERS);
+      if (cand.cost < res.cost) res = cand;
+    }
+    const slot = toSlot(res.secs, res.fir, opts.normalize);
+    return { slot, report: compare(pow, slot) };
+  }
+
+  return { SLOTS, TAPS, NBQ, SEC, STRIDE, HDR_WORDS, NAME_BYTES, LABEL_BYTES, NAME_MAX, LAYOUT, FS, TAP_MAX, A_MAX, M_MAX, R_MAX, TOL_DB, IR_MAX,
+           LOUD_LO, LOUD_HI, LOUD_N, IRError, crc32, zd2Crc, sections, locate, readSlots, patch, headerWords,
+           processIR, fit, compare, slotCurve, slotPower, irPower, slotLoudness, loudness, identity, isIdentity,
+           checkSlot, stable, toSvf, svfPower, cleanName, thru, fftPow, NFFT };
+})();
+</script>
+
+<script>
+const BASE_ZD2 = "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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAL8AAAA/AAAAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAvwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAC/AAAAPwAAAD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA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LA0KCQkgICAiZXhwbGFuYXRpb24iOiJXaGljaCBvZiB0aGUgOCBjYWJzIHBsYXlzOyB0aGUgZGlzcGxheSBzaG93cyBpdHMgbmFtZSAodXAgdG8gNyBjaGFyYWN0ZXJzLCBzZXQgaW4gdGhlIElSIExvYWRlciBUb29sKS4gQSBjaGFuZ2UgZGlwcyB0aGUgY2FiIGZvciBhYm91dCAxMiBtcyAoZmFkZSBvdXQsIHN3aXRjaCwgZmFkZSBpbikgaW5zdGVhZCBvZiBjbGlja2luZy4iLA0KCQkgICAiYmxhY2tiYWNrIjpmYWxzZSwNCgkJICAgInBlZGFsIjpmYWxzZQ0KCQl9LA0KCQl7ICANCgkJICAgIm5hbWUiOiJNaXgiLA0KCQkgICAiZXhwbGFuYXRpb24iOiIwID0gdGhlIGRyeSBiYXNzIGFsb25lIChzdGVyZW8gYXMgaXQgY2FtZSksIDEwMCA9IHRoZSBjYWIgYWxvbmUgKG1vbm8gb24gYm90aCBzaWRlcyksIGluIGJldHdlZW4gYSBzdHJhaWdodCBibGVuZDogREkgcGx1cyBjYWIuIiwNCgkJICAgImJsYWNrYmFjayI6ZmFsc2UsDQoJCSAgICJwZWRhbCI6ZmFsc2UNCgkJfSwNCgkJeyAgDQoJCSAgICJuYW1lIjoiTGV2ZWwiLA0KCQkgICAiZXhwbGFuYXRpb24iOiJMZXZlbCBvZiB0aGUgcmVzdWx0ICg4MCA9IHVuaXR5LCAxMDAgPSAxLjUgdGltZXMsIDAgPSBzaWxlbnQpLiBUaGUgSVIgTG9hZGVyIFRvb2wgbWF0Y2hlcyB0aGUgbG91ZG5lc3Mgb2YgZXZlcnkgSVIsIHNvIDgwIGlzIGFib3V0IGFzIGxvdWQgYXMgdGhlIGVmZmVjdCBzd2l0Y2hlZCBvZmYuIiwNCgkJICAgImJsYWNrYmFjayI6ZmFsc2UsDQoJCSAgICJwZWRhbCI6ZmFsc2UNCgkJfQ0KCV0NCn1QUk1FMQMAAHsgIA0KCSJQYXJhbWV0ZXJzIjpbICANCgkJeyAgDQoJCSAgICJuYW1lIjoiSVIiLA0KCQkgICAiZXhwbGFuYXRpb24iOiJXaGljaCBvZiB0aGUgOCBjYWJzIHBsYXlzOyB0aGUgZGlzcGxheSBzaG93cyBpdHMgbmFtZSAodXAgdG8gNyBjaGFyYWN0ZXJzLCBzZXQgaW4gdGhlIElSIExvYWRlciBUb29sKS4gQSBjaGFuZ2UgZGlwcyB0aGUgY2FiIGZvciBhYm91dCAxMiBtcyAoZmFkZSBvdXQsIHN3aXRjaCwgZmFkZSBpbikgaW5zdGVhZCBvZiBjbGlja2luZy4iLA0KCQkgICAiYmxhY2tiYWNrIjpmYWxzZSwNCgkJICAgInBlZGFsIjpmYWxzZQ0KCQl9LA0KCQl7ICANCgkJICAgIm5hbWUiOiJNaXgiLA0KCQkgICAiZXhwbGFuYXRpb24iOiIwID0gdGhlIGRyeSBiYXNzIGFsb25lIChzdGVyZW8gYXMgaXQgY2FtZSksIDEwMCA9IHRoZSBjYWIgYWxvbmUgKG1vbm8gb24gYm90aCBzaWRlcyksIGluIGJldHdlZW4gYSBzdHJhaWdodCBibGVuZDogREkgcGx1cyBjYWIuIiwNCgkJICAgImJsYWNrYmFjayI6ZmFsc2UsDQoJCSAgICJwZWRhbCI6ZmFsc2UNCgkJfSwNCgkJeyAgDQoJCSAgICJuYW1lIjoiTGV2ZWwiLA0KCQkgICAiZXhwbGFuYXRpb24iOiJMZXZlbCBvZiB0aGUgcmVzdWx0ICg4MCA9IHVuaXR5LCAxMDAgPSAxLjUgdGltZXMsIDAgPSBzaWxlbnQpLiBUaGUgSVIgTG9hZGVyIFRvb2wgbWF0Y2hlcyB0aGUgbG91ZG5lc3Mgb2YgZXZlcnkgSVIsIHNvIDgwIGlzIGFib3V0IGFzIGxvdWQgYXMgdGhlIGVmZmVjdCBzd2l0Y2hlZCBvZmYuIiwNCgkJICAgImJsYWNrYmFjayI6ZmFsc2UsDQoJCSAgICJwZWRhbCI6ZmFsc2UNCgkJfQ0KCV0NCn0AAAAAAAAAAAAAAAAAAAAA";
+const BASE_ZIC = "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";
+
+const $ = id => document.getElementById(id);
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const opts = () => ({ trim: $("optTrim").checked, normalize: $("optNorm").checked });
+let base = b64(BASE_ZD2), baseLabel = "built-in IRLOADER.ZD2";
+const zic = b64(BASE_ZIC);
+// a slot: {name, slot: {fir, sos} (what is written), raw: mono 44.1 kHz or null, src: what was fitted,
+//          file, from: "file" | "base" | "0.10" | "thru", info, report: IRL.fit's report or null}
+let slots = [];
+let busy = 0;
+
+function say(t, err) { const m = $("msg"); m.textContent = t; m.className = "msg" + (err ? " err" : ""); }
+
+// ---- the fit, in a worker when the browser allows one (the page stays usable) ----
+let worker = null, jobs = new Map(), jobId = 0;
+function inlineFit(job) {
+  return new Promise((resolve, reject) => setTimeout(() => {
+    try { const r = IRL.fit(job.ir, { normalize: job.normalize }); resolve(r); } catch (e) { reject(e); }
+  }, 30));
+}
+try {
+  const src = $("core").textContent + `
+self.onmessage = e => {
+  const { id, ir, normalize } = e.data;
+  try { const r = IRL.fit(ir, { normalize }); self.postMessage({ id, slot: r.slot, report: r.report }); }
+  catch (err) { self.postMessage({ id, error: String(err && err.message || err), irError: err instanceof IRL.IRError }); }
+};`;
+  worker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+  worker.onmessage = e => {
+    const j = jobs.get(e.data.id);
+    if (!j) return;
+    jobs.delete(e.data.id);
+    if (e.data.error) j.reject(e.data.irError ? new IRL.IRError(e.data.error) : new Error(e.data.error));
+    else j.resolve(e.data);
+  };
+  worker.onerror = () => {            // no worker after all: what is waiting runs here
+    worker = null;
+    for (const [id, j] of jobs) { jobs.delete(id); inlineFit(j).then(j.resolve, j.reject); }
+  };
+} catch (e) { worker = null; }
+function fitAsync(ir, normalize) {
+  const job = { ir: Float64Array.from(ir), normalize };
+  if (!worker) return inlineFit(job);
+  return new Promise((resolve, reject) => {
+    const id = ++jobId;
+    jobs.set(id, { ...job, resolve, reject });
+    worker.postMessage({ id, ir: job.ir, normalize });
+  });
+}
+
+function thruSlot() { return { name: "Thru", slot: IRL.identity(), raw: null, src: null, file: null, from: "thru", info: null, report: null }; }
+
+// a source IR (44.1 kHz, time order) into slot i
+async function fitInto(i, s) {
+  busy++;
+  render();
+  say(`Fitting slot ${i + 1}${s.file ? " (" + s.file + ")" : ""} … a few seconds.`);
+  try {
+    const r = await fitAsync(s.src, opts().normalize);
+    slots[i] = { ...s, slot: r.slot, report: r.report };
+  } finally {
+    busy--;
+  }
+}
+
+function loadBase(bytes, label) {
+  const read = IRL.readSlots(bytes);       // throws for anything that is no IRLoader
+  if (read.layout !== 2) throw new IRL.IRError("an IRLoader 0.10 file cannot be the base");
+  base = bytes;
+  baseLabel = label;
+  slots = read.slots.map(s => IRL.isIdentity(s) ? { ...thruSlot(), name: s.name }
+                                                : { name: s.name, slot: s, raw: null, src: null, file: null, from: "base", info: null, report: null });
+  $("base").textContent = "Base: " + label;
+  render();
+}
+
+// an IRLOADER.ZD2 0.10: its 1024-tap IRs, fitted one by one
+async function take010(bytes, label) {
+  const read = IRL.readSlots(bytes);
+  const old = read.slots;
+  say(`${label} is an IRLoader 0.10: its IRs are fitted now, one after the other.`);
+  for (let i = 0; i < IRL.SLOTS; i++) {
+    const ir = old[i].ir;
+    if (ir[0] === 1 && ir.every((v, k) => k === 0 || v === 0)) { slots[i] = { ...thruSlot(), name: old[i].name }; render(); continue; }
+    const src = Float64Array.from(ir);
+    try {
+      await fitInto(i, { name: old[i].name, raw: src, src, file: null, from: "0.10", info: null });
+    } catch (e) {
+      say(`Slot ${i + 1} of ${label}: ${e.message}`, true);
+      render();
+      return;
+    }
+    render();
+  }
+  $("base").textContent = `Base: ${baseLabel}; IRs from ${label} (0.10)`;
+  const off = slots.filter(s => s.report && !s.report.ok).length;
+  say(`Took the IRs of ${label} (0.10) over and fitted them` + (off ? `; ${off} slot(s) outside ±${IRL.TOL_DB} dB, see the warnings.` : "."), off > 0);
+}
+
+const PLOT_LO = 20, PLOT_HI = 20000;
+function plot(canvas, curves) {
+  const css = getComputedStyle(document.documentElement);
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const g = canvas.getContext("2d");
+  g.scale(dpr, dpr);
+  const x = f => w * Math.log(f / PLOT_LO) / Math.log(PLOT_HI / PLOT_LO), y = db => h * (15 - db) / 45;    // +15 .. -30 dB
+  g.strokeStyle = css.getPropertyValue("--grid"); g.lineWidth = 1;
+  for (const f of [100, 1000, 10000]) { g.beginPath(); g.moveTo(x(f), 0); g.lineTo(x(f), h); g.stroke(); }
+  for (const db of [0, -15]) { g.beginPath(); g.moveTo(0, y(db)); g.lineTo(w, y(db)); g.stroke(); }
+  g.setLineDash([2, 3]);
+  for (const f of [40, 6000]) { g.beginPath(); g.moveTo(x(f), 0); g.lineTo(x(f), h); g.stroke(); }
+  const line = (vals, color, dash, width) => {
+    g.setLineDash(dash); g.strokeStyle = color; g.lineWidth = width; g.beginPath();
+    curves.f.forEach((f, i) => { const v = y(Math.max(-40, vals[i])); i ? g.lineTo(x(f), v) : g.moveTo(x(f), v); });
+    g.stroke();
+  };
+  if (curves.ir) line(curves.ir, css.getPropertyValue("--ref"), [4, 3], 1.4);
+  line(curves.fit, css.getPropertyValue("--plot"), [], 1.6);
+  g.setLineDash([]);
+}
+
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+function infoText(s) {
+  const parts = [];
+  if (s.from === "thru") return "Thru: the bass unchanged.";
+  if (s.from === "base") return "From the base file (the effect's curve; the IR it came from is not in the file).";
+  if (s.from === "0.10") parts.push("From IRLoader 0.10 (1024 taps)");
+  if (s.file) {
+    const i = s.info;
+    let t = `${esc(s.file)}: ${i.sourceMs.toFixed(1)} ms`;
+    if (i.trimmedMs > 0) t += `, ${i.trimmedMs.toFixed(2)} ms trimmed`;
+    if (i.cut) t += ', <span class="warn">longer than 371 ms: cut there</span>';
+    parts.push(t);
+  }
+  let out = parts.join(". ") + ".";
+  if (s.report) {
+    const r = s.report;
+    const sg = v => (v >= 0.05 ? "+" : v <= -0.05 ? "−" : "") + Math.abs(v).toFixed(1);
+    const dev = `Largest deviation ${sg(r.maxDb)} dB at ${r.atHz < 1000 ? r.atHz.toFixed(0) + " Hz" : (r.atHz / 1000).toFixed(1) + " kHz"}`
+              + `, up to 250 Hz ${Math.abs(r.bassDb).toFixed(1)} dB.`;
+    out += " " + (r.ok ? dev : `<span class="warn">${dev} Outside ±${IRL.TOL_DB} dB: the effect plays this cab less exactly.</span>`);
+  }
+  return out;
+}
+
+function render() {
+  const grid = $("slots");
+  grid.innerHTML = "";
+  slots.forEach((s, i) => {
+    const el = document.createElement("div");
+    el.className = "slot";
+    el.innerHTML = `<div class="head"><span class="num">${i + 1}</span>
+        <input aria-label="Name of IR ${i + 1}" title="What the IR knob shows on the pedal: up to ${IRL.NAME_MAX} characters" maxlength="${IRL.NAME_MAX}" spellcheck="false"></div>
+      <canvas role="img"></canvas>
+      <div class="info"></div>
+      <div class="acts"><label class="btn">Load WAV…<input type="file" accept="audio/*,.wav,.aif,.aiff,.flac" hidden></label>
+        <button type="button">Thru</button><button type="button" class="t3kslot" aria-label="TONE3000…" title="A cab IR from TONE3000 into this slot" hidden><span class="t3k-mark" aria-hidden="true"></span>…</button></div>`;
+    const name = el.querySelector("input");
+    name.value = s.name = IRL.cleanName(s.name);      // as the pedal will show it (a base or WAV may bring a longer one)
+    name.addEventListener("change", () => { s.name = IRL.cleanName(name.value); name.value = s.name; });
+    el.querySelector(".info").innerHTML = infoText(s);
+    if (s.credit) el.querySelector(".info").append(t3kOrigin(s.credit, i));  // where it came from
+    el.querySelector("input[type=file]").addEventListener("change", e => { loadFiles([...e.target.files], i); e.target.value = ""; });
+    el.querySelector("button").addEventListener("click", () => { slots[i] = thruSlot(); render(); });
+    const fromT3k = el.querySelector(".t3kslot");
+    fromT3k.hidden = $("t3k").hidden;
+    fromT3k.addEventListener("click", () => t3kBrowse(i));
+    fromT3k.addEventListener("pointerenter", t3kShow);    // signed in or out in the NAM tab: known before the click
+    el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("drag"); });
+    el.addEventListener("dragleave", () => el.classList.remove("drag"));
+    el.addEventListener("drop", e => { e.preventDefault(); e.stopPropagation(); el.classList.remove("drag"); loadFiles([...e.dataTransfer.files], i); });
+    grid.appendChild(el);
+    const curves = s.report ? s.report.curves : IRL.slotCurve(s.slot);
+    const canvas = el.querySelector("canvas");
+    canvas.setAttribute("aria-label", `Frequency response of slot ${i + 1}, 20 Hz to 20 kHz` + (s.report ? `: your IR and what the effect plays, at most ${Math.abs(s.report.maxDb).toFixed(1)} dB apart` : ""));
+    plot(canvas, curves);
+  });
+  $("write").disabled = busy > 0;
+}
+
+async function decode(file) {
+  const ctx = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: IRL.FS });
+  const buf = await ctx.decodeAudioData(await file.arrayBuffer());     // resampled to 44.1 kHz
+  const x = new Float32Array(buf.length);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < x.length; i++) x[i] += d[i] / buf.numberOfChannels;
+  }
+  return x;
+}
+
+// files into slot `at` and the ones after it; at < 0: from the first Thru slot on
+async function loadFiles(files, at) {
+  if (busy) { say("A fit is running: wait for it.", true); return; }
+  if (at < 0) at = slots.findIndex(s => s.from === "thru");
+  if (at < 0) { say("No free (Thru) slot: drop the file on the slot it should replace.", true); return; }
+  const done = [];
+  for (const f of files) {
+    if (at >= IRL.SLOTS) { say(`No slot left for ${f.name} and the files after it.`, true); break; }
+    try {
+      const raw = await decode(f);
+      const p = IRL.processIR(raw, opts());
+      await fitInto(at, { name: IRL.cleanName(f.name.replace(/\.[^.]*$/, "")), raw, src: p.ir, file: f.name, from: "file", info: p.info,
+                          credit: f.t3kCredit || null });
+      done.push(`${f.name} → ${at + 1}`);
+      at++;
+      render();
+    } catch (e) {
+      say(`${f.name}: ${e instanceof IRL.IRError ? e.message : "the browser cannot read this file (" + e.message + ")"}`, true);
+      render();
+      return;
+    }
+  }
+  render();
+  if (done.length) {
+    const off = done.length && slots.filter(s => s.report && !s.report.ok).length;
+    say("Loaded and fitted " + done.join(", ") + "." + (off ? ` ${off} slot(s) outside ±${IRL.TOL_DB} dB: see the warnings.` : ""), off > 0);
+  }
+}
+
+async function reprocess() {
+  if (busy) { say("A fit is running: change the options after it.", true); return; }
+  say("");
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i];
+    if (!s.raw) continue;
+    try {
+      const src = s.from === "file" ? IRL.processIR(s.raw, opts()) : { ir: s.raw, info: s.info };
+      await fitInto(i, { ...s, src: src.ir, info: src.info });
+    } catch (e) {
+      say(`${s.file || "slot " + (i + 1)}: ${e.message}`, true);
+    }
+    render();
+  }
+  say("Fitted again with the new options.");
+}
+
+function download(name, bytes) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+
+// the file to write: the slots in the base, read back
+function built() {
+  const out = IRL.patch(base, slots.map(s => ({ name: s.name, fir: s.slot.fir, sos: s.slot.sos })));
+  IRL.readSlots(out);
+  return out;
+}
+const slotList = () => slots.map((s, i) => `${i + 1} ${IRL.cleanName(s.name)}`).join(", ");
+
+$("write").addEventListener("click", () => {
+  if (busy) { say("A fit is running: wait for it.", true); return; }
+  try {
+    const out = built();
+    download("IRLOADER.ZD2", out);
+    setTimeout(() => download("IRLOADER.ZIC", zic), 400);
+    say(`Written: IRLOADER.ZD2 (${out.length} bytes) and IRLOADER.ZIC. Slots: ${slotList()}.`);
+  } catch (e) {
+    say(e.message, true);
+  }
+});
+
+// Served by the Zoom MS Installer: the pair goes into its list (its own upload, from this same
+// address). Opened as a file there is no installer to answer, and the button stays hidden.
+fetch("api/ping").then(r => r.json()).then(p => {
+  $("send").hidden = p.app !== "Zoom MS Installer";
+  if (p.app === "Zoom MS Installer") t3kShow();
+}).catch(() => {});
+
+// ---- TONE3000: the installer in the MS Plus Bridge signs in there (TONE3000's own window) and
+// fetches what was picked; cab IRs go into the free slots, and each keeps its creator and license. ----
+let t3kSignedIn = false, t3kAt = -1;          // the slot to fill from (-1: the first Thru slot)
+const GEAR = { "amp": "Amp", "amp-cab": "Amp + Cab", "full-rig": "Amp + Cab", "pedal": "Pedal", "outboard": "Outboard",
+               "cab": "Cabinet", "space": "Space", "experimental": "Experimental" };
+async function t3kShow() {
+  try {
+    const reply = await fetch("t3k/status");        // only the installer in the bridge has it
+    if (!reply.ok) return;
+    t3kSignedIn = (await reply.json()).signed_in;
+    $("t3k").hidden = false;
+    for (const button of document.querySelectorAll(".t3kslot")) button.hidden = false;
+  } catch (e) { /* an installer without TONE3000 */ }
+}
+function t3kOpen() {                              // opened by the click itself, or the browser blocks it
+  $("t3kTone").replaceChildren();
+  window.open("t3k/start?kind=ir", "t3k-ir", "popup,width=1100,height=820");
+  say("Pick a cab in TONE3000's window…");
+}
+$("t3kGo").addEventListener("click", () => t3kBrowse(-1));
+$("t3kGo").addEventListener("pointerenter", t3kShow);
+function t3kBrowse(at) {
+  t3kAt = at;
+  if (t3kSignedIn) return t3kOpen();
+  // not signed in yet: first what TONE3000 is (its design requirements), then its window
+  const card = Object.assign(document.createElement("div"), { className: "tonecard" });
+  const partners = Object.assign(document.createElement("div"), { className: "partners", textContent: "MS Plus Bridge × " });
+  partners.append(Object.assign(document.createElement("span"), { className: "t3k-logo", role: "img", ariaLabel: "TONE3000" }));
+  card.append(partners);
+  card.append(Object.assign(document.createElement("p"), { className: "splash", textContent: "The MS Plus Bridge works with " +
+    "TONE3000 to give you access to a massive library of Neural Amp Modeler (NAM) captures and IRs of real analog gear, " +
+    "created by a global community of musicians. You sign in there with your email address and a 6-digit code." }));
+  const go = Object.assign(document.createElement("button"), { className: "primary", textContent: "Continue" });
+  go.addEventListener("click", t3kOpen);
+  const not = Object.assign(document.createElement("button"), { textContent: "Not now" });
+  not.addEventListener("click", () => card.remove());
+  card.append(go, " ", not);
+  $("t3kTone").replaceChildren(card);
+  card.scrollIntoView({ block: "nearest" });
+}
+function t3kPicked(message) {      // a message without a kind: a sign-in this program no longer knows
+  if (!message || message.type !== "t3k" || (message.kind && message.kind !== "ir")) return;
+  t3kShow();
+  if (message.ok) t3kTone(message.tone_id);
+  else say(message.error || "Nothing was picked.", !message.canceled);
+}
+window.addEventListener("message", e => { if (e.origin === location.origin) t3kPicked(e.data); });
+try { new BroadcastChannel("t3k").onmessage = e => t3kPicked(e.data); } catch (e) { /* an older browser */ }
+
+const t3kLink = (text, url) => url ? Object.assign(document.createElement("a"), { textContent: text, href: url, target: "_blank", rel: "noopener" })
+                                   : document.createTextNode(text);
+function t3kPicture(url, className) {            // TONE3000's pictures; one the page may not show is left out
+  const image = Object.assign(document.createElement("img"), { src: url, alt: "", className });
+  image.onerror = () => image.remove();
+  return image;
+}
+function t3kOrigin(credit, at) {                 // where an IR came from, in its slot
+  const line = Object.assign(document.createElement("div"), { className: "from" });
+  if (credit.image && credit.tone_id) {             // the picture opens the tone again, for this slot
+    const open = Object.assign(document.createElement("button"), { type: "button", className: "open", title: "Show this tone" });
+    open.append(t3kPicture(credit.image, ""));
+    open.addEventListener("click", () => { t3kAt = at; t3kTone(credit.tone_id); });
+    line.append(open);
+  }
+  line.append(Object.assign(document.createElement("span"), { className: "t3k-mark", role: "img", ariaLabel: "TONE3000", title: "TONE3000" }),
+              " ", t3kLink(credit.tone || "tone", credit.tone_url), " by ",
+              t3kLink("@" + (credit.creator || "?"), credit.creator_url), ` · ${credit.license || ""}`);
+  return line;
+}
+function t3kHead(tone) {         // what TONE3000 asks for: picture, title, gear, format, creator
+  const head = Object.assign(document.createElement("div"), { className: "tonehead" });
+  if (tone.image) head.append(t3kPicture(tone.image, "pic"));
+  const text = document.createElement("div");
+  const title = Object.assign(document.createElement("div"), { className: "title" });
+  title.append(t3kLink(tone.tone || "Tone", tone.tone_url));
+  const by = document.createElement("div");
+  if (tone.avatar) by.append(t3kPicture(tone.avatar, "avatar"));
+  by.append(t3kLink("@" + (tone.creator || "?"), tone.creator_url));
+  text.append(title, Object.assign(document.createElement("div"), { className: "facts",
+    textContent: [GEAR[tone.gear] || tone.gear, String(tone.format || "").toUpperCase(), tone.license && "license " + tone.license]
+      .filter(Boolean).join(" · ") }), by);
+  if (tone.description) text.append(Object.assign(document.createElement("p"), { className: "desc", textContent: tone.description }));
+  head.append(text);
+  return head;
+}
+
+async function t3kTone(id) {
+  const box = $("t3kTone");
+  box.replaceChildren();
+  let reply, found;
+  try {
+    reply = await fetch(`t3k/tone?id=${encodeURIComponent(id)}&kind=ir`);
+    found = await reply.json();
+  } catch (e) { say("The installer did not answer.", true); return; }
+  if (!reply.ok) { say(found.error, true); t3kShow(); return; }
+  const tone = found.tone, card = document.createElement("div");
+  card.className = "tonecard";
+  card.append(t3kHead(tone));
+  if (!tone.changes_allowed) {
+    card.append(Object.assign(document.createElement("p"), { textContent: `Its license (${String(tone.license).toUpperCase()}) allows no changes, and fitting an IR into the effect changes it.` }));
+    box.append(card);
+    return;
+  }
+  const from = t3kAt;                              // a slot's own button: that slot and the free ones after it
+  const free = () => {                             // filled slots are never overwritten unasked
+    const at = from >= 0 ? from : slots.findIndex(s => s.from === "thru");
+    if (at < 0) return 0;
+    let n = from >= 0 ? 1 : 0;
+    while (at + n < IRL.SLOTS && slots[at + n].from === "thru") n++;
+    return n;
+  };
+  const room = free();                             // what fits is ticked
+  const ticks = found.models.map((model, index) => {
+    const tick = Object.assign(document.createElement("input"), { type: "checkbox", checked: index < room, value: model.id });
+    const label = document.createElement("label");
+    label.append(tick, " " + model.name);
+    card.append(label);
+    return tick;
+  });
+  if (!found.models.length) card.append(Object.assign(document.createElement("p"), { textContent: "It has no IR." }));
+  else if (found.models.length > room) card.append(Object.assign(document.createElement("p"), {
+    textContent: room ? `${room} slot(s) can take them${from >= 0 ? ` from slot ${from + 1} on` : " from the first Thru slot on"} without replacing another IR: that many are ticked.`
+                      : "No slot is Thru: set the slots to fill to Thru first, or use a slot's own TONE3000… button." }));
+  const go = document.createElement("button");
+  go.className = "primary";
+  go.textContent = from >= 0 ? `Fetch into slot ${from + 1} and on` : "Fetch into the free slots";
+  go.addEventListener("click", async () => {
+    if (busy) { say("A fit is running: fetch again after it.", true); return; }
+    const wanted = ticks.filter(tick => tick.checked), take = wanted.slice(0, free());
+    if (!take.length) { say(wanted.length ? "No free slot for them: set the slots to fill to Thru first." : "Tick an IR first.", true); return; }
+    go.disabled = true;
+    const files = [];
+    try {
+      for (const tick of take) {
+        const answer = await fetch("t3k/file?model=" + encodeURIComponent(tick.value));
+        if (!answer.ok) {
+          say((await answer.json()).error || "TONE3000 did not give the file.", true);
+          if (answer.status === 401) t3kShow();
+          go.disabled = false;
+          return;
+        }
+        const file = new File([await answer.blob()], decodeURIComponent(answer.headers.get("X-File-Name")));
+        file.t3kCredit = JSON.parse(decodeURIComponent(answer.headers.get("X-Credit")));
+        files.push(file);
+      }
+    } catch (e) { say("The installer did not answer.", true); go.disabled = false; return; }
+    if (busy) { say("A fit is running: fetch again after it.", true); go.disabled = false; return; }
+    const fits = free();                           // slots may have been filled during the downloads
+    if (!fits) { say("No free slot for them: set the slots to fill to Thru first.", true); go.disabled = false; return; }
+    box.replaceChildren();
+    await loadFiles(files.slice(0, fits), from);
+    const placed = Math.min(files.length, fits);
+    if (wanted.length > placed) say(`${$("msg").textContent} ${wanted.length - placed} not fetched: no free slot for them.`, true);
+  });
+  card.append(go);
+  box.append(card);
+}
+$("send").addEventListener("click", async () => {
+  if (busy) { say("A fit is running: wait for it.", true); return; }
+  try {
+    const out = built();
+    for (const [name, bytes] of [["IRLOADER.ZD2", out], ["IRLOADER.ZIC", zic]]) {
+      const r = await (await fetch("api/upload?name=" + name, { method: "POST", body: bytes })).json();
+      if (!r.ok) throw new Error(r.busy ? "The installer is working on the pedal: send again once it is done." : `The installer did not take ${name}.`);
+    }
+    const r = await (await fetch("api/queue/rescan", { method: "POST", body: "{}" })).json();
+    if (!r.ok) throw new Error("The installer is working on the pedal: send again once it is done.");
+    say(`Sent to the installer: IRLOADER.ZD2 + .ZIC are in its list (slots: ${slotList()}). Take IRLoader out of every patch first, then install it there.`);
+  } catch (e) {
+    say(e.message, true);
+  }
+});
+$("openZd2").addEventListener("change", async e => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  if (busy) { say("A fit is running: wait for it.", true); return; }
+  try {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    if (IRL.readSlots(bytes).layout === 1) await take010(bytes, f.name);
+    else { loadBase(bytes, f.name); say(`Opened ${f.name}: its 8 cabs are in the slots.`); }
+  } catch (err) {
+    say(`${f.name}: ${err.message}`, true);
+  }
+});
+$("optTrim").addEventListener("change", reprocess);
+$("optNorm").addEventListener("change", reprocess);
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => { e.preventDefault(); loadFiles([...e.dataTransfer.files], -1); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+addEventListener("resize", () => { clearTimeout(render.t); render.t = setTimeout(render, 150); });
+
+try {
+  loadBase(base, "built-in IRLOADER.ZD2");
+} catch (e) {
+  say("The built-in base file cannot be read: " + e.message + " (open an IRLOADER.ZD2 instead)", true);
+}
+</script>
+</body>
+</html>

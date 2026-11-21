@@ -367,6 +367,24 @@ class Failing(ReadingCase):
         self.assertIn("2 effect files not read yet", self.output)
         self.assertEqual(self.world.file_log[-2:], ["60214000000000", "6009"])
 
+    def test_the_installer_opened_meanwhile_ends_the_reading(self):
+        # a bridge without --workshop beside the Zoom MS Installer started on its own: no further file
+        names = [f"NEWF{number}.ZD2" for number in range(4)]
+        data = {name: effect_file(0x09000FA0 + number, f"Fx{number}") for number, name in enumerate(names)}
+        opened, read_one = threading.Event(), bridge.Session._read_effect_file
+
+        def read_then_open(session, name, size):
+            effect = read_one(session, name, size)
+            opened.set()
+            session.bridge.installer = "the Zoom MS Installer is open"        # as the watch sees it a moment later
+            return effect
+        with mock.patch.object(bridge.Session, "_read_effect_file", read_then_open), \
+                mock.patch.object(bridge, "installer_holds", lambda folder: "the Zoom MS Installer is open"
+                                  if opened.is_set() else None):
+            self.read(data, files=FILES + names)
+        self.assertEqual(len(set(self.opened())), 1)
+        self.assertIn("Pedal released: the Zoom MS Installer is open", self.output)
+
     def test_one_that_was_not_read_comes_after_the_others_the_next_time(self):
         self.world_setup = lambda world: world.silent_files.add("NEWFX.ZD2")
         with mock.patch.object(bridge, "FILES_READ_AT_ONCE", 1):

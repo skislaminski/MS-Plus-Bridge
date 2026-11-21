@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zoom MS Installer</title>
+<style>
+:root {
+  --bg: #f3f4f6; --card: #ffffff; --ink: #16181d; --muted: #646b78;
+  --line: #dfe2e8; --accent: #2456d6; --accent-ink: #ffffff;
+  --ok: #17794a; --ok-bg: #e4f5ec; --warn: #8a5a00; --warn-bg: #fdf1d6;
+  --err: #b3261e; --err-bg: #fde7e5; --field: #f7f8fa; --shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171c; --card: #1e2128; --ink: #e9ebf0; --muted: #9aa1ae;
+    --line: #2f343e; --accent: #6b93ff; --accent-ink: #0d1017;
+    --ok: #6fd3a0; --ok-bg: #173527; --warn: #f0c36a; --warn-bg: #3a2f12;
+    --err: #ff9a92; --err-bg: #3f1b18; --field: #171a20; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 14px/1.45 -apple-system, "Segoe UI", system-ui, Roboto, sans-serif;
+}
+main { max-width: 960px; margin: 0 auto; padding: 16px 16px 40px; }
+header { display: flex; align-items: baseline; gap: 12px; margin: 4px 2px 14px; }
+header h1 { font-size: 20px; margin: 0; }
+header .sub { color: var(--muted); font-size: 12.5px; }
+section {
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 14px; box-shadow: var(--shadow);
+}
+h2 { font-size: 15px; margin: 0; }
+.head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.head .grow, .row .grow { flex: 1; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+button {
+  font: inherit; color: var(--ink); background: var(--field);
+  border: 1px solid var(--line); border-radius: 7px; padding: 6px 12px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.danger { color: var(--err); }
+button.link { border: 0; background: none; padding: 2px 4px; color: var(--accent); }
+button.x { padding: 2px 8px; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.num { text-align: right; white-space: nowrap; }
+td.chk, th.chk { width: 30px; padding-right: 0; }
+td.chk input, th.chk input { margin: 0; vertical-align: middle; }
+tr.pick { cursor: pointer; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.badge { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 11.5px; white-space: nowrap; }
+.badge.ok { background: var(--ok-bg); color: var(--ok); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.err { background: var(--err-bg); color: var(--err); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 18px; margin-bottom: 12px; }
+.facts .k { color: var(--muted); font-size: 12px; }
+.facts .v { font-weight: 600; }
+.meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 5px; }
+.meter > div { height: 100%; background: var(--accent); width: 0; }
+#drop {
+  border: 1.5px dashed var(--line); border-radius: 9px; padding: 16px; text-align: center;
+  background: var(--field); margin-bottom: 10px;
+}
+#drop.over { border-color: var(--accent); background: var(--card); }
+#log {
+  background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  height: 230px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+}
+#log .ok { color: var(--ok); } #log .warn { color: var(--warn); } #log .err { color: var(--err); font-weight: 600; }
+.banner { border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.banner.ok { background: var(--ok-bg); color: var(--ok); }
+.banner.warn { background: var(--warn-bg); color: var(--warn); }
+.banner.err { background: var(--err-bg); color: var(--err); }
+.banner b { display: block; margin-bottom: 2px; }
+#alarm { display: none; }
+#progress { display: none; margin-bottom: 10px; }
+#veil {
+  position: fixed; inset: 0; background: rgba(10,12,16,.55); display: none;
+  align-items: center; justify-content: center; padding: 16px; z-index: 10;
+}
+#dialog {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px;
+  width: min(640px, 100%); max-height: 88vh; overflow: auto; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+}
+#dialog.wide { width: min(900px, 100%); }
+#dialog h3 { margin: 0 0 8px; font-size: 16px; }
+#dialog pre {
+  background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  overflow: auto; max-height: 300px; margin: 8px 0; white-space: pre;
+}
+#dialog .buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+.opt { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; }
+.opt:hover { background: var(--field); }
+.opt.off { opacity: .5; }
+.opt input { margin: 0; }
+footer { color: var(--muted); font-size: 12.5px; padding: 0 4px; }
+#gone { position: fixed; inset: 0; background: var(--bg); display: none; align-items: center; justify-content: center; text-align: center; z-index: 20; padding: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Zoom MS Installer</h1>
+    <span class="sub" id="sub"></span>
+  </header>
+
+  <div class="banner err" id="alarm">
+    <b>Do not switch the pedal off. Do not unplug power or USB.</b>
+    The effect list on the pedal is in doubt – a transfer could not be verified, or the list
+    is not valid. Leave the pedal powered and connected and run the rescue; restart the pedal
+    only after the effect list is reported valid.
+    <div class="row" style="margin-top:8px">
+      <button id="btnRescueNow">Run rescue now</button>
+      <button id="btnRestore" style="display:none">Restore the effect list from the newest backup</button>
+    </div>
+  </div>
+
+  <section>
+    <div class="head">
+      <h2>Pedal</h2>
+      <span class="muted small grow" id="pedalHint"></span>
+      <button id="btnConnect" class="primary">Connect</button>
+    </div>
+    <div id="pedalEmpty" class="muted">
+      Connect the pedal by USB, switch it on and close other programs that use it
+      (nam2zoom, Handy Guitar Lab, browser tabs with a pedal editor). Then press Connect.
+    </div>
+    <div id="pedalBody" style="display:none">
+      <div class="facts">
+        <div><div class="k">Model</div><div class="v" id="fModel"></div></div>
+        <div><div class="k">Firmware</div><div class="v" id="fFirmware"></div></div>
+        <div><div class="k">Effects on the pedal</div><div class="v" id="fEffects"></div></div>
+        <div><div class="k">Storage</div><div class="v" id="fStorage"></div><div class="meter"><div id="fMeter"></div></div></div>
+      </div>
+      <div class="row small" style="margin-bottom:10px">
+        <span id="backupLine" class="grow"></span>
+        <button id="btnBackup">Back up now</button>
+        <button id="btnOpenBackups">Open backup folder</button>
+      </div>
+      <div id="addedWrap"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Effects to install</h2>
+      <span class="muted small grow" id="queueHint"></span>
+    </div>
+    <div id="drop">
+      <div id="dropText">Drop <b>.ZD2</b> files (with their <b>.ZIC</b> icons) or whole folders here</div>
+      <div class="row" style="justify-content:center; margin-top:10px">
+        <button id="btnAddFiles">Add files…</button>
+        <button id="btnAddFolder">Add folder…</button>
+      </div>
+      <input id="inFiles" type="file" multiple accept=".zd2,.ZD2,.zic,.ZIC" style="display:none">
+      <input id="inFolder" type="file" webkitdirectory style="display:none">
+    </div>
+    <div id="queueWrap"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnClear">Clear list</button>
+      <button id="btnTakeOut">Take out of the list</button>
+      <span class="grow"></span>
+      <button id="btnInstall" class="primary">Install on the pedal</button>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Activity</h2>
+      <span class="muted small grow" id="jobHint"></span>
+      <button class="link" id="btnOpenLogs">Open log folder</button>
+    </div>
+    <div id="result"></div>
+    <div id="progress">
+      <div class="small" id="progressText"></div>
+      <div class="meter"><div id="progressBar"></div></div>
+    </div>
+    <div id="log" class="mono"></div>
+  </section>
+
+  <footer>
+    <div class="row">
+      <span class="grow">Try a new effect in a patch first and do not save that patch until the effect runs cleanly.
+        AUTO SAVE is switched off on the pedal when installing.</span>
+      <button id="btnRescue">Rescue…</button>
+    </div>
+    <div style="margin-top:6px" id="foot"></div>
+    <div style="margin-top:6px">Built on zoom-zt2 by Simon Wood and on the transfer-safety work of
+      stomphacks by Thomas Hammer (Waveformer), both MIT-licensed &ndash; full notices in NOTICE.md.
+      Not affiliated with ZOOM.</div>
+  </footer>
+</main>
+
+<div id="veil"><div id="dialog"></div></div>
+<div id="gone"><div><h2>Zoom MS Installer was closed</h2><p class="muted">You can close this window.</p></div></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = text;
+  return e;
+};
+let since = 0, st = null, shownQuestion = 0, localDialog = false, uploading = false, misses = 0;
+window.zoomPolls = 0;
+
+async function post(path, body) {
+  const r = await fetch("api/" + path, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {})});
+  return r.json();
+}
+
+// ------------------------------------------------------------- dialogs
+function openDialog(build) {
+  const d = $("dialog");
+  d.className = "";
+  d.replaceChildren();
+  build(d);
+  $("veil").style.display = "flex";
+  const first = d.querySelector("button.primary");
+  if (first) first.focus();
+}
+// A note shown by the page itself takes the place of a question the program
+// is still waiting on. Forgetting which question was shown brings it back
+// with the next poll; without that the job would wait for an answer nobody
+// can give any more.
+function closeDialog() { $("veil").style.display = "none"; localDialog = false; shownQuestion = 0; }
+function buttons(d, list) {
+  const row = el("div", "buttons");
+  for (const [label, cls, fn] of list) {
+    const b = el("button", cls, label);
+    b.onclick = fn;
+    row.appendChild(b);
+  }
+  d.appendChild(row);
+}
+function confirmLocal(title, text, yesLabel, onYes, danger, details) {
+  localDialog = true;
+  openDialog(d => {
+    d.appendChild(el("h3", null, title));
+    if (details && details.length) d.appendChild(el("pre", "mono", details.join("\n")));
+    d.appendChild(el("div", null, text));
+    buttons(d, [["Cancel", null, closeDialog],
+                [yesLabel, danger ? "danger" : "primary", () => { closeDialog(); onYes(); }]]);
+  });
+}
+function answer(id, value) {
+  $("veil").style.display = "none";
+  post("answer", {id: id, value: value});
+}
+
+function showQuestion(q) {
+  shownQuestion = q.id;
+  localDialog = false;
+  if (q.kind === "yesno") {
+    let yes = "Yes", no = "No", title = "Question";
+    if (/^Write /.test(q.text)) { yes = "Write to the pedal"; no = "Cancel"; title = "Ready to transfer"; }
+    else if (/^Make a backup/.test(q.text)) { yes = "Back up first"; no = "Continue without"; title = "Backup"; }
+    else if (/^Remove /.test(q.text)) { yes = "Remove"; no = "Cancel"; title = /^Remove these /.test(q.text) ? "Remove effects" : "Remove effect"; }
+    openDialog(d => {
+      d.appendChild(el("h3", null, title));
+      d.classList.toggle("wide", !!(q.details && q.details.length));
+      if (q.details && q.details.length) {
+        d.appendChild(el("pre", "mono", q.details.join("\n").replace(/^\n+/, "")));
+      }
+      d.appendChild(el("div", null, q.text));
+      const row = [[no, null, () => answer(q.id, false)], [yes, "primary", () => answer(q.id, true)]];
+      // the backup question comes before anything is written: here the whole job can still be called off
+      if (/^Make a backup/.test(q.text)) row.unshift(["Cancel", null, () => answer(q.id, "cancel")]);
+      buttons(d, row);
+    });
+  } else if (q.kind === "category") {
+    openDialog(d => {
+      d.appendChild(el("h3", null, "Category for “" + q.effect + "”"));
+      let line = "Built for the category " + q.built_for + ".";
+      if (q.current) line += " Already installed on this pedal, in " + q.current + ".";
+      d.appendChild(el("div", "muted", line));
+      const box = el("div");
+      box.style.margin = "10px 0 0";
+      for (const o of q.options) {
+        const lab = el("label", "opt" + (o.taken ? " off" : ""));
+        const r = el("input");
+        r.type = "radio"; r.name = "cat"; r.value = o.group;
+        r.disabled = o.taken; r.checked = (o.group === q["default"]);
+        lab.appendChild(r);
+        lab.appendChild(el("span", null, o.label));
+        lab.appendChild(el("span", "muted small", o.count + " stock"));
+        if (o.current) lab.appendChild(el("span", "badge ok", "installed here"));
+        else if (o.own) lab.appendChild(el("span", "badge ok", "the effect's own"));
+        if (o.taken) lab.appendChild(el("span", "badge warn", "id already taken here"));
+        box.appendChild(lab);
+      }
+      d.appendChild(box);
+      const picked = () => {
+        const r = d.querySelector("input[name=cat]:checked");
+        return r ? parseInt(r.value, 10) : null;
+      };
+      const list = [["Skip this effect", null, () => answer(q.id, {skip: true})]];
+      if (q["default"] !== null) {
+        list.push(["Suggested category for all", null, () => answer(q.id, {group: q["default"], all: true})]);
+      }
+      list.push(["OK", "primary", () => { const g = picked(); if (g !== null) answer(q.id, {group: g}); }]);
+      buttons(d, list);
+    });
+  } else if (q.kind === "choose") {
+    openDialog(d => {
+      d.appendChild(el("h3", null, q.title));
+      q.options.forEach((name, i) => {
+        const b = el("button", null, name);
+        b.style.display = "block"; b.style.margin = "6px 0"; b.style.width = "100%"; b.style.textAlign = "left";
+        b.onclick = () => answer(q.id, i);
+        d.appendChild(b);
+      });
+      buttons(d, [["Cancel", null, () => answer(q.id, null)]]);
+    });
+  }
+}
+
+// ------------------------------------------------------------- rendering
+function fmtMB(n) { return (n / 1e6).toFixed(1) + " MB"; }
+
+// Rows ticked in the two tables (file names), and what each table was last
+// built from: a table is only rebuilt when that changes, so that a tick or a
+// click is never lost to the next poll.
+const selected = new Set(), queueSelected = new Set();
+let addedSig = "", queueSig = "";
+
+// Tick boxes for a table: one per row, one in the header for all of them.
+// `ticked` keeps its names while the table is rebuilt; names that are no
+// longer in the table drop out. `changed` updates the buttons that act on it.
+function tickBoxes(ticked, names, busy, changed) {
+  for (const name of Array.from(ticked)) if (!names.includes(name)) ticked.delete(name);
+  const all = el("input");
+  all.type = "checkbox"; all.title = "Select all"; all.disabled = busy;
+  const boxes = new Map();
+  const sync = () => {
+    for (const [name, box] of boxes) box.checked = ticked.has(name);
+    all.checked = names.length > 0 && ticked.size === names.length;
+    all.indeterminate = ticked.size > 0 && ticked.size < names.length;
+    changed();
+  };
+  const tick = (name, on) => { if (on) ticked.add(name); else ticked.delete(name); sync(); };
+  all.onchange = () => { ticked.clear(); if (all.checked) names.forEach(n => ticked.add(n)); sync(); };
+  return {
+    header(tr) { tr.appendChild(el("th", "chk")).appendChild(all); },
+    row(tr, name) {
+      const box = el("input");
+      box.type = "checkbox"; box.disabled = busy;
+      box.onchange = () => tick(name, box.checked);
+      boxes.set(name, box);
+      tr.className = "pick";
+      tr.appendChild(el("td", "chk")).appendChild(box);
+      // a click anywhere in the row ticks it
+      tr.onclick = e => { if (!busy && !e.target.closest("button, input")) tick(name, !ticked.has(name)); };
+    },
+    sync
+  };
+}
+
+function removeEffects(names) {
+  const go = () => post("job/remove", {files: names});
+  if (names.length === 1) {
+    confirmLocal("Remove " + names[0] + "?",
+      "The effect and its icon are deleted from the pedal. Saved patches that use it will lose it. You are asked about a backup first.",
+      "Continue", go, true);
+  } else {
+    confirmLocal("Remove " + names.length + " effects?",
+      "These effects and their icons are deleted from the pedal, one after the other. Saved patches that use them will lose them. You are asked about a backup first.",
+      "Continue", go, true, names);
+  }
+}
+
+function renderPedal(p, busy) {
+  $("pedalEmpty").style.display = p ? "none" : "block";
+  $("pedalBody").style.display = p ? "block" : "none";
+  $("btnConnect").textContent = p ? "Read again" : "Connect";
+  $("btnConnect").className = p ? "" : "primary";
+  $("pedalHint").textContent = p ? "read at " + p.read_at : "";
+  if (!p) { addedSig = ""; return; }
+  $("fModel").textContent = "Zoom " + p.name;
+  $("fFirmware").textContent = p.firmware;
+  $("fEffects").textContent = p.effects + " (" + p.added.length + " added)";
+  $("fStorage").textContent = fmtMB(p.storage_free) + " free of " + fmtMB(p.storage_max);
+  $("fMeter").style.width = (p.storage_max ? 100 * (1 - p.storage_free / p.storage_max) : 0) + "%";
+  $("backupLine").textContent = p.backup
+    ? "Newest backup of this pedal: " + p.backup.created
+    : "There is no backup of this pedal yet. Make one before installing.";
+  const sig = JSON.stringify([p.known, p.added, busy]);
+  if (sig === addedSig) return;
+  addedSig = sig;
+  const wrap = $("addedWrap");
+  wrap.replaceChildren();
+  if (!p.known || !p.added.length) selected.clear();
+  if (!p.known) {
+    wrap.appendChild(el("div", "banner warn", "This model is not known to the program. Added effects cannot be told apart from stock effects, so removing is switched off."));
+    return;
+  }
+  if (!p.added.length) {
+    wrap.appendChild(el("div", "muted small", "No added effects on this pedal."));
+    return;
+  }
+  const names = p.added.map(a => a.file);
+  const btnSelected = el("button", "danger");
+  const ticks = tickBoxes(selected, names, busy, () => {
+    btnSelected.textContent = "Remove selected" + (selected.size ? " (" + selected.size + ")" : "") + "…";
+    btnSelected.disabled = busy || !selected.size;
+  });
+  const t = el("table");
+  const hr = el("tr");
+  ticks.header(hr);
+  ["Added effect", "Category", "Version", "ID", ""].forEach(h => hr.appendChild(el("th", null, h)));
+  t.appendChild(hr);
+  for (const a of p.added) {
+    const tr = el("tr");
+    ticks.row(tr, a.file);
+    tr.appendChild(el("td", "mono", a.file));
+    tr.appendChild(el("td", null, a.label));
+    tr.appendChild(el("td", null, a.version));
+    tr.appendChild(el("td", "mono", a.id));
+    const td = el("td", "num");
+    const b = el("button", "danger", "Remove");
+    b.disabled = busy;
+    b.onclick = () => removeEffects([a.file]);
+    td.appendChild(b);
+    tr.appendChild(td);
+    t.appendChild(tr);
+  }
+  wrap.appendChild(t);
+  const row = el("div", "row");
+  row.style.marginTop = "10px";
+  row.appendChild(el("span", "muted small grow", "Tick several effects to remove them in one go."));
+  btnSelected.onclick = () => removeEffects(names.filter(n => selected.has(n)));
+  row.appendChild(btnSelected);
+  wrap.appendChild(row);
+  ticks.sync();
+}
+
+function renderQueue(queue, pedal, busy) {
+  const wrap = $("queueWrap");
+  const good = queue.filter(q => q.ok).length;
+  $("queueHint").textContent = queue.length
+    ? good + " ready" + (good < queue.length ? ", " + (queue.length - good) + " with a problem" : "")
+    : "";
+  $("btnInstall").disabled = busy || !good;
+  $("btnClear").disabled = busy || !queue.length;
+  const onPedal = new Set(pedal ? pedal.added.map(a => a.file.toUpperCase()) : []);
+  const sig = JSON.stringify([queue, Array.from(onPedal), busy]);
+  if (sig === queueSig) return;
+  queueSig = sig;
+  wrap.replaceChildren();
+  const out = $("btnTakeOut");
+  const ticks = tickBoxes(queueSelected, queue.map(q => q.file), busy, () => {
+    out.textContent = "Take out of the list" + (queueSelected.size ? " (" + queueSelected.size + ")" : "");
+    out.disabled = busy || !queueSelected.size;
+  });
+  ticks.sync();
+  if (!queue.length) {
+    wrap.appendChild(el("div", "muted small", "The list is empty."));
+    return;
+  }
+  const t = el("table");
+  const hr = el("tr");
+  ticks.header(hr);
+  ["File", "Effect", "Version", "Built for", "", ""].forEach(h => hr.appendChild(el("th", null, h)));
+  t.appendChild(hr);
+  for (const q of queue) {
+    const tr = el("tr");
+    ticks.row(tr, q.file);
+    tr.appendChild(el("td", "mono", q.file));
+    if (q.ok) {
+      tr.appendChild(el("td", null, q.name));
+      tr.appendChild(el("td", null, q.version));
+      tr.appendChild(el("td", null, q.category));
+      const td = el("td");
+      if (!q.icon) td.appendChild(el("span", "badge warn", "no icon file"));
+      if (onPedal.has(q.file.toUpperCase())) td.appendChild(el("span", "badge ok", "on the pedal"));
+      tr.appendChild(td);
+    } else {
+      const td = el("td");
+      td.colSpan = 4;
+      td.appendChild(el("span", "badge err", "not usable"));
+      td.appendChild(el("span", "small", " " + q.problem));
+      tr.appendChild(td);
+    }
+    const tdx = el("td", "num");
+    const b = el("button", "x", "×");
+    b.title = "Take out of the list";
+    b.disabled = busy;
+    b.onclick = () => post("queue/remove", {file: q.file});
+    tdx.appendChild(b);
+    tr.appendChild(tdx);
+    t.appendChild(tr);
+  }
+  wrap.appendChild(t);
+  ticks.sync();       // the new boxes show what is still ticked
+}
+
+const RESULT = {
+  0: ["ok", "Done"],
+  2: ["warn", "Refused – nothing was changed on the pedal"],
+  3: ["warn", "Not completed – the pedal is in a verified safe state"],
+  4: ["err", "Unresolved – do not switch the pedal off"],
+  130: ["warn", "Cancelled"]
+};
+function renderResult(res, running) {
+  const box = $("result");
+  box.replaceChildren();
+  if (running || !res) return;
+  const [cls, title] = RESULT[res.code] || ["warn", "Finished"];
+  const b = el("div", "banner " + cls);
+  b.appendChild(el("b", null, title));
+  let msg = (res.message || "").replace(/^(REFUSED \(nothing was changed on the pedal\)|NOT COMPLETED, but the pedal is in a verified safe state|UNRESOLVED): ?/, "");
+  if (msg) b.appendChild(el("span", null, msg));
+  box.appendChild(b);
+}
+
+function appendLog(lines) {
+  const log = $("log");
+  const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+  for (const line of lines) {
+    let cls = null;
+    if (/^(UNRESOLVED|UNEXPECTED|!!)/.test(line)) cls = "err";
+    else if (/^(REFUSED|NOT COMPLETED|TRANSFER ERROR|LEFT OUT|\s+LEFT OUT)/.test(line)) cls = "warn";
+    else if (/^(Installed \d|Backup done|Connected:)|verified/.test(line)) cls = "ok";
+    log.appendChild(el("div", cls, line === "" ? " " : line));
+  }
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+
+const JOBS = {connect: "Reading the pedal…", backup: "Backing up…", install: "Installing…",
+              remove: "Removing…", rescue: "Rescue…", restore: "Restoring the effect list…"};
+
+function render(s) {
+  const wasRunning = !!(st && st.job && st.job.running);
+  st = s; window.zoomState = s;
+  const busy = !!(s.job && s.job.running) || uploading;
+  $("sub").textContent = (s.demo ? "DEMO – simulated pedal · " : "") + "version " + s.version;
+  $("foot").textContent = "Backups, adapted copies and logs: " + s.data_root;
+  $("jobHint").textContent = s.job && s.job.running ? (JOBS[s.job.name] || "Working…") : "";
+  $("alarm").style.display = s.unresolved ? "block" : "none";
+  $("btnRestore").style.display = (s.unresolved && s.restore_from) ? "inline-block" : "none";
+  if (s.restore_from) $("btnRestore").textContent = "Restore the effect list from the backup of " + s.restore_from.created;
+  for (const id of ["btnConnect", "btnBackup", "btnRescue", "btnRescueNow", "btnRestore", "btnAddFiles", "btnAddFolder"]) {
+    $(id).disabled = busy;
+  }
+  renderPedal(s.pedal, busy);
+  renderQueue(s.queue, s.pedal, busy);
+  renderResult(s.result, s.job && s.job.running);
+  if (wasRunning && !(s.job && s.job.running)) {
+    $("result").scrollIntoView({block: "center", behavior: "smooth"});
+  }
+  const p = s.progress;
+  $("progress").style.display = p ? "block" : "none";
+  if (p) {
+    $("progressText").textContent = p.text;
+    $("progressBar").style.width = (p.total ? 100 * p.done / p.total : 0) + "%";
+  }
+  if (s.log.length) appendLog(s.log);
+  since = s.n;
+  if (s.question && s.question.id !== shownQuestion) showQuestion(s.question);
+  if (!s.question && !localDialog && $("veil").style.display !== "none") $("veil").style.display = "none";
+  if (s.notice) {
+    confirmLocal("Please wait", s.notice, "OK", () => {});
+  }
+}
+
+async function poll() {
+  try {
+    const r = await fetch("api/state?since=" + since, {cache: "no-store"});
+    if (!r.ok) throw new Error("state " + r.status);
+    render(await r.json());
+    window.zoomPolls++;
+    misses = 0;
+  } catch (e) {
+    if (++misses >= 6) { $("gone").style.display = "flex"; return; }
+  }
+  setTimeout(poll, st && ((st.job && st.job.running) || st.question) ? 250 : 700);
+}
+
+// ------------------------------------------------------- adding effects
+function wanted(name) { return /^[A-Za-z0-9_\-]{1,8}\.(zd2|zic)$/i.test(name); }
+
+async function uploadFiles(files) {
+  const list = files.filter(f => wanted(f.name) && f.size <= (1 << 20));
+  const skipped = files.filter(f => /\.zd2$/i.test(f.name) && !wanted(f.name)).length;
+  if (!list.length) {
+    confirmLocal("Nothing to add", skipped
+      ? "The effect file names must have 1 to 8 characters (letters, digits, _ or -) before .ZD2."
+      : "No .ZD2 effect files were found in what you added.", "OK", () => {});
+    return;
+  }
+  uploading = true;
+  $("dropText").textContent = "Adding " + list.length + " file(s)…";
+  try {
+    for (const f of list) {
+      await fetch("api/upload?name=" + encodeURIComponent(f.name), {method: "POST", body: f});
+    }
+    await post("queue/rescan");
+  } finally {
+    uploading = false;
+    $("dropText").innerHTML = "Drop <b>.ZD2</b> files (with their <b>.ZIC</b> icons) or whole folders here";
+  }
+}
+
+function readEntries(dirEntry) {
+  return new Promise(resolve => {
+    const reader = dirEntry.createReader();
+    const all = [];
+    const step = () => reader.readEntries(batch => {
+      if (!batch.length) return resolve(all);
+      all.push(...batch);
+      step();
+    }, () => resolve(all));
+    step();
+  });
+}
+function entryFile(entry) { return new Promise(resolve => entry.file(resolve, () => resolve(null))); }
+// A dropped folder stands for the files in it and in its direct subfolders.
+async function collect(entry, depth, out) {
+  if (entry.isFile) {
+    const f = await entryFile(entry);
+    if (f) out.push(f);
+  } else if (entry.isDirectory && depth < 2) {
+    for (const child of await readEntries(entry)) await collect(child, depth + 1, out);
+  }
+}
+
+const drop = $("drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => e.preventDefault());
+drop.addEventListener("drop", async e => {
+  if (st && st.job && st.job.running) return;
+  const files = [];
+  const items = e.dataTransfer.items ? Array.from(e.dataTransfer.items) : [];
+  const entries = items.map(i => i.webkitGetAsEntry ? i.webkitGetAsEntry() : null).filter(Boolean);
+  if (entries.length) {
+    for (const entry of entries) await collect(entry, 0, files);
+  } else {
+    files.push(...Array.from(e.dataTransfer.files || []));
+  }
+  uploadFiles(files);
+});
+
+async function pick(kind, input) {
+  if (st && st.native) {
+    const r = await post("pick", {kind: kind});
+    if (r.added === 0 && kind === "folder") {
+      confirmLocal("Nothing to add", "No .ZD2 effect files were found in that folder or its direct subfolders.", "OK", () => {});
+    }
+  } else {
+    input.value = "";
+    input.click();
+  }
+}
+$("btnAddFiles").onclick = () => pick("files", $("inFiles"));
+$("btnAddFolder").onclick = () => pick("folder", $("inFolder"));
+$("inFiles").onchange = e => uploadFiles(Array.from(e.target.files));
+$("inFolder").onchange = e => uploadFiles(Array.from(e.target.files).filter(
+  f => (f.webkitRelativePath || f.name).split("/").length <= 3));
+
+// --------------------------------------------------------------- buttons
+$("btnConnect").onclick = () => post("job/connect");
+$("btnBackup").onclick = () => post("job/backup");
+$("btnInstall").onclick = () => post("job/install");
+$("btnClear").onclick = () => post("queue/clear");
+$("btnTakeOut").onclick = () => post("queue/remove",
+  {files: st.queue.map(q => q.file).filter(n => queueSelected.has(n))});
+$("btnOpenBackups").onclick = () => post("open", {what: "backups"});
+$("btnOpenLogs").onclick = () => post("open", {what: "logs"});
+const rescue = () => confirmLocal("Rescue",
+  "Use this if a transfer was interrupted. It closes a file session that may still be open on the pedal and checks the effect list. Nothing is written.",
+  "Run rescue", () => post("job/rescue"));
+$("btnRescue").onclick = rescue;
+$("btnRescueNow").onclick = () => post("job/rescue");
+$("btnRestore").onclick = () => confirmLocal("Restore the effect list",
+  "Only if the rescue reported the effect list as NOT valid. If the list on the pedal is complete and only cut short, it is just filled up to its full length – nothing else changes. Otherwise the list from the backup of " +
+  (st && st.restore_from ? st.restore_from.created : "this pedal") +
+  " is written back to the pedal: effects installed after that backup will no longer be listed; effects removed or replaced since then are left out of it.",
+  "Write the list back", () => post("job/restore"), true);
+
+// The browser window (always on Windows) could otherwise be closed in the
+// middle of a transfer, or with the alarm still up.
+window.addEventListener("beforeunload", e => {
+  if (st && !st.native && ((st.job && st.job.running) || st.unresolved)) { e.preventDefault(); e.returnValue = ""; }
+});
+window.addEventListener("pagehide", () => { try { navigator.sendBeacon("api/bye", "{}"); } catch (e) {} });
+window.zoomUiReady = true;
+poll();
+</script>
+</body>
+</html>

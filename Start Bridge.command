@@ -1,13 +1,15 @@
 #!/bin/zsh
-# Double-click in Finder: starts the bridge and opens the interface in the browser.
+# Double-click in Finder: starts the bridge and opens the interface in the browser, with the tabs of
+# the workshop beside it (Installer, IR Loader, KeyWave, NAM: --workshop).
 # On the first start it also makes "MS Plus Bridge.app" in this folder, a clickable app with
 # its own icon that does nothing but open this script in Terminal. Drag it into the Dock if you
 # like. (The app is made here because macOS blocks unsigned apps that come out of a download.)
 #   "Start Bridge.command" --app-only    makes the app and does not start the bridge
 cd "$(dirname "$0")" || exit 1
-if ! .venv/bin/python -c "import mido, rtmidi, yaml" 2>/dev/null; then
+if ! .venv/bin/python -c "import mido, rtmidi, yaml, construct" 2>/dev/null; then
   echo "Setting up the Python environment…"
-  python3 -m venv .venv && .venv/bin/python -m pip install --quiet -r requirements.txt || exit 1
+  # an environment that is there keeps its Python: only what is missing is added
+  { [ -x .venv/bin/python ] || python3 -m venv .venv; } && .venv/bin/python -m pip install --quiet -r requirements.txt || exit 1
 fi
 
 APP="MS Plus Bridge.app"
@@ -59,4 +61,4 @@ if [ -f icon.png ] && [ "$(cat "$APP/Contents/Resources/bridge-folder.txt" 2>/de
 fi
 [ "$1" = "--app-only" ] && exit 0
 
-exec .venv/bin/python bridge.py --open "$@"
+exec .venv/bin/python bridge.py --open --workshop "$@"

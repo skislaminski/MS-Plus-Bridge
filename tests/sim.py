@@ -477,7 +477,10 @@ class SimulatedCase(unittest.TestCase):
                  "MEASUREMENTS": self.folder / "measurements.json"}
         for module, values in ((bridge, dict(paths, RETRY_SECONDS=0.2, PORT_CHECK_SECONDS=0.05,
                                              CONTROLS=self.folder / "controls.json",
-                                             EFFECT_CACHE=self.folder / "pedal_effects.json")),
+                                             EFFECT_CACHE=self.folder / "pedal_effects.json",
+                                             # not the installer of this computer: tests/test_lease.py plays it
+                                             INSTALLER_DATA=self.folder / "installer",
+                                             INSTALLER_CHECK_SECONDS=0.05)),
                                (probe, paths)):
             for name, value in values.items():
                 patcher = mock.patch.object(module, name, value)

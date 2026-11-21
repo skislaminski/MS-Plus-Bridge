@@ -3,15 +3,19 @@
 In these tests the pedal is on preset 095, which the simulation reports as bank 0, program 94.
 """
 import contextlib
+import http.client
 import io
 import json
+import socket
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import mido
 import yaml
 
 import bridge
+import ui
 import zoom_sysex as zs
 from tests.sim import ID, CONTROLLER_PORT, ZOOM_PORT, Port, SimulatedCase, World, cc, learned, mapping
 
@@ -240,6 +244,31 @@ A = mapping(2, 5, 20, 100, invert=True, name="Depth #1")
 B = mapping(0, 2, 0, 60, name="Hold")
 
 
+class TheServer(unittest.TestCase):
+    """What the interface's server refuses before the bridge sees anything of it."""
+
+    def test_no_other_site_frames_the_page_and_no_body_is_read_without_a_length(self):
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        called = []
+        ui.serve(SimpleNamespace(call=lambda function, timeout=3.0: called.append(function) or {"result": None}),
+                 {"port": port})
+        page = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        page.request("GET", "/")
+        reply = page.getresponse()
+        reply.read()
+        self.assertEqual((reply.status, reply.headers["Content-Security-Policy"]), (200, "frame-ancestors 'none'"))
+        page.close()
+        endless = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        endless.putrequest("POST", "/api/learn")
+        endless.putheader("Content-Length", "-1")          # would read until the sender stops
+        endless.endheaders()
+        self.assertEqual(endless.getresponse().status, 413)
+        endless.close()
+        self.assertEqual(called, [])
+
+
 class Interface(SimulatedCase):
     def test_learning_saving_and_exporting(self):
         results = {}
@@ -442,7 +471,7 @@ class InTheWlan(SimulatedCase):
         bridge.CONFIG.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
         served, opened = [], []
         with mock.patch.object(bridge, "HOME", self.folder), \
-                mock.patch.object(ui, "serve", lambda instance, settings, listen=False: served.append(listen)
+                mock.patch.object(ui, "serve", lambda instance, settings, listen=False, workshop=None: served.append(listen)
                                   or "http://pedalmac.local:8765"), \
                 mock.patch.object(ui, "network_address", lambda: "192.168.1.20"), \
                 mock.patch.object(bridge.Bridge, "run", lambda instance: None), \

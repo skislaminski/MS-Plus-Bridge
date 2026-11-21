@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>N2Z Bank</title>
+<!-- The NAM tab of the MS Plus Bridge (bridge.py --workshop), served by the Zoom MS Installer in
+     it under its secret address. It asks there:
+     - nam/check and nam/build (workshop.py, nam_bank.py),
+     - nam/train/... (nam_train.py: nam2zoom.app's trainer),
+     - t3k/... (tone3000.py: TONE3000's own pick window).
+     The look is the installer's (installer/zoom_ms_gui.html). -->
+<style>
+:root {
+  --bg: #f3f4f6; --card: #ffffff; --ink: #16181d; --muted: #646b78;
+  --line: #dfe2e8; --accent: #2456d6; --accent-ink: #ffffff;
+  --ok: #17794a; --ok-bg: #e4f5ec; --warn: #8a5a00; --warn-bg: #fdf1d6;
+  --err: #b3261e; --err-bg: #fde7e5; --field: #f7f8fa; --shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171c; --card: #1e2128; --ink: #e9ebf0; --muted: #9aa1ae;
+    --line: #2f343e; --accent: #6b93ff; --accent-ink: #0d1017;
+    --ok: #6fd3a0; --ok-bg: #173527; --warn: #f0c36a; --warn-bg: #3a2f12;
+    --err: #ff9a92; --err-bg: #3f1b18; --field: #171a20; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, "Segoe UI", system-ui, Roboto, sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 16px 16px 40px; }
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 4px 2px 14px; }
+header h1 { font-size: 20px; margin: 0; }
+a { color: var(--accent); }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
+h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h2 a { font-size: 12.5px; font-weight: 400; }
+button, .btn { font: inherit; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 7px; padding: 6px 12px; cursor: pointer; }
+button:hover:not(:disabled), .btn:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.x, td button { padding: 2px 8px; }
+button.link { border: 0; background: none; color: var(--accent); padding: 2px 4px; }
+.drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px; text-align: center; }
+.drop.over { border-color: var(--accent); }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
+tr:last-child td { border-bottom: 0; }
+td input, input.text { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 4px 6px; color: var(--ink); background: var(--field); border: 1px solid var(--line); border-radius: 6px; }
+td input { width: 7em; text-transform: uppercase; }
+input.text { width: 26em; max-width: 100%; }
+.status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.status audio { height: 28px; width: 210px; }
+.ok { color: var(--ok); }
+.no { color: var(--err); }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.note { border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+.note.good { background: var(--ok-bg); color: var(--ok); }
+.note.bad { background: var(--err-bg); color: var(--err); }
+.note.warn { background: var(--warn-bg); color: var(--warn); }
+.note ul { margin: 6px 0 0; padding-left: 20px; }
+ul.plain { margin: 0; padding-left: 20px; }
+ul.plain li + li { margin-top: 6px; }
+.tone { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+.tone label { display: block; margin-top: 4px; }
+.tonehead { display: flex; gap: 12px; align-items: flex-start; }
+.tonehead .pic { width: 96px; height: 96px; object-fit: cover; border-radius: 6px; flex: none; }
+.tonehead .title { font-weight: 600; }
+.avatar { width: 18px; height: 18px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+.desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 6px 0 0; }
+.from { margin-top: 3px; overflow-wrap: anywhere; }
+.from img { width: 22px; height: 22px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+.from button.link { padding: 0; }
+/* TONE3000's official logo and T3K mark, unaltered (tone3000.com/api → Download TONE3000 Logos);
+   the full logo comes first, the mark only where it was seen (its design requirements) */
+.t3k-logo, .t3k-mark { display: inline-block; vertical-align: middle; background: center / contain no-repeat; }
+.t3k-logo { aspect-ratio: 210 / 32; height: 16px; background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjEwIiBoZWlnaHQ9IjMyIiB2aWV3Qm94PSIwIDAgMjEwIDMyIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8ZyBjbGlwLXBhdGg9InVybCgjY2xpcDBfMzU4Nl85Njc3KSI+CjxwYXRoIGQ9Ik01Ni4yNDEyIDI1LjY2NDJWMjIuMTc4N0M1NS44MjE1IDIyLjc2NjEgNTUuMzI3NyAyMy4zMDUxIDU0Ljc1MyAyMy43OTI0QzUyLjI4MzIgMjUuODkzMyA0OC4zNDE1IDI3LjAwMzYgNDMuMzU3IDI3LjAwMzZDNDAuMjgzNiAyNy4wMDM2IDM1Ljg5OTYgMjYuNTE2NCAzMi40ODQxIDI0LjIwMjNDMzAuNDAxOCAyMi43OTIgMjkuMjIwMyAyMC42NzggMjguODg3OSAxNy43Nzk4QzI4LjgyMzEgMTguMzIyIDI4Ljc4NzcgMTguODg2OCAyOC43ODc3IDE5LjQ4MzlDMjguNzg3NyAxOS43MjU5IDI4Ljc5NDMgMTkuOTYxNSAyOC44MDA2IDIwLjE5MzlDMjguNzk0MyAyMC4zODExIDI4Ljc4NzcgMjAuNTY4MyAyOC43ODc3IDIwLjc2MTlDMjguNzg3NyAyNC41OTYxIDI5Ljk5ODIgMjcuMjc4MSAzMi40ODQxIDI4Ljk2NThDMzUuODk5NiAzMS4yODMyIDQwLjI4MDUgMzEuNzY3MyA0My4zNTcgMzEuNzY3M0M0OC4zNDE1IDMxLjc2NzMgNTIuMjgzMiAzMC42NTcgNTQuNzUzIDI4LjU1NjFDNTUuMzI3NyAyOC4wNjg2IDU1LjgyMTUgMjcuNTI5NyA1Ni4yNDEyIDI2Ljk0MjNWMzEuNDQ3OEg2Ny4wODg1VjI2LjY4NDFINTYuMjQxMlYyNS42NjQyWiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNMTA5Ljc2IDguNDU5MTVDMTEwLjUxOSA3LjczOTQ3IDExMS40ODQgNy4xMjMwMyAxMTIuNjUzIDYuNjE2MzRDMTE1LjE2NCA1LjUyODcgMTE4LjIzOCA0Ljk3NjgzIDEyMS43ODkgNC45NzY4M0MxMjUuNTI0IDQuOTc2ODMgMTI4LjczMyA1LjU5MzI2IDEzMS4zMzIgNi44MDY3NEMxMzIuNzA3IDcuNDQ5IDEzMy43MTQgOC4xODQ4NSAxMzQuMzUzIDkuMDA0NThDMTM0LjYxOCA4LjcxNDE0IDEzNC45MDIgOC40Mzk4MSAxMzUuMjA5IDguMTc4MzhDMTM3LjY5MSA2LjA4MzgxIDE0MS42MjMgNC45NzY4MyAxNDYuNTg1IDQuOTc2ODNDMTUxLjAwMiA0Ljk3NjgzIDE1NC42NjMgNS44ODY5MyAxNTcuMTY1IDcuNjA3MTNDMTU3Ljc2MiA4LjAxMzggMTU4LjI4NSA4LjQ3MjA3IDE1OC43NDYgOC45NjkwOUMxNTkuMDAyIDguNjkxNTQgMTU5LjI3NiA4LjQyNjg5IDE1OS41NzMgOC4xNzgzOEMxNjIuMDU2IDYuMDgzODEgMTY1Ljk4OCA0Ljk3NjgzIDE3MC45NSA0Ljk3NjgzQzE3NS4zMzcgNC45NzY4MyAxNzguODQ5IDUuODYxMTIgMTgxLjM5IDcuNjA3MTNDMTgyLjAxMyA4LjAzNjM5IDE4Mi41NjUgOC41MTQwNCAxODMuMDQ5IDkuMDQwMUMxODMuMzIgOC43MzY3MyAxODMuNjE0IDguNDQ5NDggMTgzLjkzNyA4LjE3ODM4QzE4Ni40MTkgNi4wODM4MSAxOTAuMzUyIDQuOTc2ODMgMTk1LjMxNCA0Ljk3NjgzQzE5OS43MyA0Ljk3NjgzIDIwMy4zODcgNS44ODY5MyAyMDUuODkgNy42MDcxM0MyMDcuOTc4IDkuMDQwMSAyMDkuMjI3IDExLjAxODUgMjA5LjY4MyAxMy42MTY1QzIwOS44MTUgMTIuODc0MiAyMDkuODggMTIuMDgwMyAyMDkuODggMTEuMjMxNUMyMDkuODggNy40MjY0IDIwOC41NzUgNC42ODMxMyAyMDUuODg2IDIuODQwMjlDMjAzLjM4NCAxLjEyMDExIDE5OS43MjcgMC4yMDk5OTEgMTk1LjMxIDAuMjA5OTkxQzE5MC4zNDggMC4yMDk5OTEgMTg2LjQxNiAxLjMxNjk4IDE4My45MzQgMy40MTE1NEMxODMuNjE0IDMuNjgyNjQgMTgzLjMyIDMuOTY5ODkgMTgzLjA0NiA0LjI3MzI2QzE4Mi41NjIgMy43NDcyIDE4Mi4wMTMgMy4yNjk1NSAxODEuMzg3IDIuODQwMjlDMTc4Ljg0OSAxLjA5NDI5IDE3NS4zMzQgMC4yMDk5OTEgMTcwLjk0NiAwLjIwOTk5MUMxNjUuOTg0IDAuMjA5OTkxIDE2Mi4wNTIgMS4zMTY5OCAxNTkuNTcgMy40MTE1NEMxNTkuMjczIDMuNjYzMjcgMTU4Ljk5OCAzLjkyNzkzIDE1OC43NDMgNC4yMDIyNkMxNTguMjgyIDMuNzAyMDEgMTU3Ljc1OSAzLjI0Njk2IDE1Ny4xNjEgMi44NDAyOUMxNTQuNjU5IDEuMTIwMTEgMTUwLjk5OSAwLjIwOTk5MSAxNDYuNTgyIDAuMjA5OTkxQzE0MS42MiAwLjIwOTk5MSAxMzcuNjg4IDEuMzE2OTggMTM1LjIwNiAzLjQxMTU0QzEzNC44OTYgMy42NzI5NyAxMzQuNjEyIDMuOTQ3MyAxMzQuMzUgNC4yMzc3NUMxMzMuNzExIDMuNDIxMjQgMTMyLjcwNyAyLjY4NTM4IDEzMS4zMjggMi4wMzk5MUMxMjguNzMgMC44MjY0MiAxMjUuNTIxIDAuMjA5OTkxIDEyMS43ODYgMC4yMDk5OTFDMTE4LjA1IDAuMjA5OTkxIDExNS4xNjEgMC43NjE4NzIgMTEyLjY1IDEuODQ5NUMxMTEuNDgxIDIuMzU2MiAxMTAuNTE2IDIuOTcyNjMgMTA5Ljc1NyAzLjY5MjMyVjAuNjU1MzY4SDc4Ljc5NDJWNS40MTg5OEgxMDkuNzU3VjguNDU1OTNMMTA5Ljc2IDguNDU5MTVaIiBmaWxsPSIjRkYwMDAwIi8+CjxwYXRoIGQ9Ik0zMy42Mzk5IDcuMDc3ODRDMzYuMDgwNiA1LjY5OTc1IDM5LjQxNTMgNC45ODAwNCA0My40MTUzIDQuOTgwMDRDNDcuODM0NyA0Ljk4MDA0IDUxLjQ5MjUgNS44OTAxNSA1My45OTQzIDcuNjEwMzVDNTQuODk4NCA4LjIzMDAxIDU1LjY0NCA4Ljk1NjE3IDU2LjIzODEgOS43ODg4NVY1LjQyMjJINjYuMDQyNEw3OC43OTExIDE1LjcwNDZWMTAuOTQxTDY2LjA0MjQgMC42NTg1OTFINTYuMjM4MVY1LjAyNTIzQzU1LjY0NCA0LjE5MjU1IDU0Ljg5ODQgMy40NjY0IDUzLjk5NDMgMi44NDY3NkM1MS40OTI1IDEuMTI2NTYgNDcuODM0NyAwLjIxNjQzOCA0My40MTUzIDAuMjE2NDM4QzM5LjQxMjIgMC4yMTY0MzggMzYuMDgwNiAwLjkzNjE0MiAzMy42Mzk5IDIuMzE0MjNWMC42NTg1OTFIMC4wOTQ2MDQ1VjUuNDIyMkgzMy42Mzk5VjcuMDc3ODRaIiBmaWxsPSIjRkYwMDAwIi8+CjxwYXRoIGQ9Ik0xNDguNzEgMTQuMDU1NEMxNDcuNjU3IDEzLjIzNTcgMTQ2Ljc3MyAxMy4yMzU3IDE0Ni4zOTIgMTMuMjM1N0MxNDUuNzQ2IDEzLjIzNTcgMTQ1LjA3MSAxMy41MTMyIDE0NC4zODcgMTQuMDY1MUMxNDMuOTY3IDE0LjQwMDggMTQzLjA5NiAxNS4zNzU0IDE0Mi43OTUgMTcuNzM3OUMxNDMuMDk2IDIwLjExOTcgMTQzLjk3NyAyMS4wODE0IDE0NC4zOTcgMjEuNDEwNkMxNDUuNDQ5IDIyLjIzMzYgMTQ2LjI5MiAyMi4yMzM2IDE0Ni42NTMgMjIuMjMzNkMxNDcuMzI1IDIyLjIzMzYgMTQ4LjAxNiAyMS45NTI4IDE0OC43MDYgMjEuNDAwOUMxNDkuMTg3IDIxLjAxNjkgMTQ5LjkzIDIwLjA1NTEgMTUwLjE4NSAxNy43MjVDMTQ5LjkzMyAxNS4zNzg3IDE0OS4xODcgMTQuNDI2NiAxNDguNzEgMTQuMDUyMlYxNC4wNTU0WiIgZmlsbD0iI0ZGMDAwMCIvPgo8cGF0aCBkPSJNMTIyLjI3OSAyMS4wMjM0QzEyMi4wMTggMjEuMDIzNCAxMjEuNDA4IDIxLjA0OTIgMTIwLjI2OCAyMS4yMTA2TDExOS4zMSAyMS4zNDYxQzEyMC4yMzYgMjIuMjI3MiAxMjEuMzQ3IDIyLjIzMzYgMTIxLjg2IDIyLjIzMzZDMTIyLjUzMSAyMi4yMzM2IDEyMy40MzUgMjIuMTY1OCAxMjQuNDc1IDIxLjYzMzNDMTI0LjUzOSAyMS42MDEgMTI0LjU5NyAyMS41NjIzIDEyNC42NTkgMjEuNTI2OEMxMjMuOTYxIDIxLjE3MTggMTIzLjI1MSAyMS4wMjAxIDEyMi4yNzkgMjEuMDIwMVYyMS4wMjM0WiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNMTA4LjQ4MiAxNi42OTU0VjE3Ljk3MzVWMTguMjU3NVYxOC45OTY1TDExNi4zMzkgMTguNDI4NUwxMTYuMzc4IDE4LjI4TDExNS40OTcgMTguNDA1OUwxMTUuOTE3IDE2LjY4MjVMMTA4LjQ4MiAxNS45NjZWMTYuNjk1NFoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTE3My4wNzQgMTQuMDU1NEMxNzIuMDIxIDEzLjIzNTcgMTcxLjEzNyAxMy4yMzU3IDE3MC43NTYgMTMuMjM1N0MxNzAuMTEgMTMuMjM1NyAxNjkuNDM1IDEzLjUxMzIgMTY4Ljc1MSAxNC4wNjUxQzE2OC4zMzEgMTQuNDAwOCAxNjcuNDYgMTUuMzc1NCAxNjcuMTU5IDE3LjczNzlDMTY3LjQ2IDIwLjExOTcgMTY4LjM0MSAyMS4wODE0IDE2OC43NjEgMjEuNDEwNkMxNjkuODEzIDIyLjIzMzYgMTcwLjY1NiAyMi4yMzM2IDE3MS4wMTcgMjIuMjMzNkMxNzEuNjg5IDIyLjIzMzYgMTcyLjM3OSAyMS45NTI4IDE3My4wNyAyMS40MDA5QzE3My41NTEgMjEuMDE2OSAxNzQuMjk0IDIwLjA1NTEgMTc0LjU0OSAxNy43MjVDMTc0LjI5NyAxNS4zNzg3IDE3My41NTEgMTQuNDI2NiAxNzMuMDc0IDE0LjA1MjJWMTQuMDU1NFoiIGZpbGw9IiNGRjAwMDAiLz4KPHBhdGggZD0iTTE5Ny40MzQgMTQuMDU1NEMxOTYuMzgyIDEzLjIzNTcgMTk1LjQ5NyAxMy4yMzU3IDE5NS4xMTcgMTMuMjM1N0MxOTQuNDcxIDEzLjIzNTcgMTkzLjc5NiAxMy41MTMyIDE5My4xMTIgMTQuMDY1MUMxOTIuNjkyIDE0LjQwMDggMTkxLjgyIDE1LjM3NTQgMTkxLjUyIDE3LjczNzlDMTkxLjgyIDIwLjExOTcgMTkyLjcwMiAyMS4wODE0IDE5My4xMjEgMjEuNDEwNkMxOTQuMTc0IDIyLjIzMzYgMTk1LjAxNyAyMi4yMzM2IDE5NS4zNzggMjIuMjMzNkMxOTYuMDUgMjIuMjMzNiAxOTYuNzQgMjEuOTUyOCAxOTcuNDMxIDIxLjQwMDlDMTk3LjkxMiAyMS4wMTY5IDE5OC42NTUgMjAuMDU1MSAxOTguOTEgMTcuNzI1QzE5OC42NTggMTUuMzc4NyAxOTcuOTEyIDE0LjQyNjYgMTk3LjQzNCAxNC4wNTIyVjE0LjA1NTRaIiBmaWxsPSIjRkYwMDAwIi8+CjxwYXRoIGQ9Ik00NS41NDI2IDE0LjA1NTRDNDQuNDkwMiAxMy4yMzU3IDQzLjYwNTUgMTMuMjM1NyA0My4yMjQ4IDEzLjIzNTdDNDIuNTc5MSAxMy4yMzU3IDQxLjkwNDQgMTMuNTEzMiA0MS4yMTk5IDE0LjA2NTFDNDAuNzQ1MyAxNC40NDkyIDQwLjAwMjggMTUuNDEwOSAzOS43NTExIDE3LjczNzlDNDAuMDAyOCAyMC4wODA5IDQwLjc0ODUgMjEuMDM2MiA0MS4yMjk2IDIxLjQxMDZDNDIuMjgyIDIyLjIzMzYgNDMuMTI0NyAyMi4yMzM2IDQzLjQ4NjIgMjIuMjMzNkM0NC4xNTc3IDIyLjIzMzYgNDQuODQ4NiAyMS45NTI4IDQ1LjUzOTQgMjEuNDAwOUM0Ni4wMjAzIDIxLjAxNjkgNDYuNzYyOCAyMC4wNTUxIDQ3LjAxNDggMTcuNzI1QzQ2Ljc2MjggMTUuMzc4NyA0Ni4wMTcyIDE0LjQyNjYgNDUuNTM5NCAxNC4wNTIyTDQ1LjU0MjYgMTQuMDU1NFoiIGZpbGw9IiNGRjAwMDAiLz4KPHBhdGggZD0iTTExLjMyOTEgMTAuNDY5OEgwLjA5NDYwNDVWMTMuOTU1NFYxNS4yMzM0SDExLjMyOTFWMTMuOTU1NFYxMC40Njk4WiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNMTEuMzI5IDMwLjE2OTdWMzEuNDQ3OEgyMi4zNDcyVjMwLjE2OTdWMjYuNjg0MUgxMS4zMjlWMzAuMTY5N1oiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTMwLjEwODEgMTAuNDY5OEgyMi4zNTA1VjE1LjIzMzRIMjguODEwMkMyOC45MDA3IDEzLjM4NzQgMjkuMzMzMyAxMS44MDkyIDMwLjEwODEgMTAuNDY5OFoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTIwNi42NDUgMjMuNzkyNEMyMDQuMTc1IDI1Ljg5MzMgMjAwLjIzMyAyNy4wMDM2IDE5NS4yNDkgMjcuMDAzNkMxOTIuMTcyIDI3LjAwMzYgMTg3Ljc5MSAyNi41MTY0IDE4NC4zNzYgMjQuMjAyM0MxODMuODc5IDIzLjg2NjYgMTgzLjQzNiAyMy40ODU4IDE4My4wNCAyMy4wNjk1QzE4Mi44MDQgMjMuMzIxMiAxODIuNTUyIDIzLjU2MzMgMTgyLjI4MSAyMy43OTI0QzE3OS44MTEgMjUuODkzMyAxNzUuODY5IDI3LjAwMzYgMTcwLjg4NSAyNy4wMDM2QzE2Ny44MDggMjcuMDAzNiAxNjMuNDI4IDI2LjUxNjQgMTYwLjAxMiAyNC4yMDIzQzE1OS41MTUgMjMuODY2NiAxNTkuMDczIDIzLjQ4NTggMTU4LjY3NSAyMy4wNjk1QzE1OC40NCAyMy4zMjEyIDE1OC4xODggMjMuNTYzMyAxNTcuOTE3IDIzLjc5MjRDMTU1LjQ0NyAyNS44OTMzIDE1MS41MDUgMjcuMDAzNiAxNDYuNTIxIDI3LjAwMzZDMTQzLjQ0NCAyNy4wMDM2IDEzOS4wNjMgMjYuNTE2NCAxMzUuNjQ4IDI0LjIwMjNDMTM1LjM0NSAyMy45OTU3IDEzNS4wNiAyMy43NzMgMTM0Ljc5MiAyMy41Mzc0QzEzNC4xODIgMjQuMDI4IDEzMy40NCAyNC40ODMxIDEzMi41NjIgMjQuODk5NEMxMjkuNjM0IDI2LjI5MzYgMTI2LjA1NyAyNy4wMDM2IDEyMS45MjggMjcuMDAzNkMxMTguMDQ3IDI3LjAwMzYgMTE0LjcxMiAyNi4zNzExIDExMi4wMiAyNS4xMjUzQzExMS40ODEgMjQuODc2OCAxMTAuOTkgMjQuNjA5IDExMC41NDggMjQuMzI0OFYyNi42ODQxSDc5LjgwMTVMNjcuMDgxOSAxNi40MDQ5VjIxLjE2ODVMNzkuODAxNSAzMS40NDc3SDExMC41NDhWMjkuMDg4NUMxMTAuOTkgMjkuMzcyNiAxMTEuNDgxIDI5LjY0MDUgMTEyLjAyIDI5Ljg4OUMxMTQuNzEyIDMxLjEzNDggMTE4LjA0NCAzMS43NjczIDEyMS45MjggMzEuNzY3M0MxMjYuMDU3IDMxLjc2NzMgMTI5LjYzNyAzMS4wNjA0IDEzMi41NjIgMjkuNjYzQzEzMy40NCAyOS4yNDM0IDEzNC4xODIgMjguNzg4NCAxMzQuNzkyIDI4LjMwMTFDMTM1LjA1NyAyOC41MzY3IDEzNS4zNDUgMjguNzU5MyAxMzUuNjQ4IDI4Ljk2NThDMTM5LjA2MyAzMS4yODMxIDE0My40NDQgMzEuNzY3MyAxNDYuNTIxIDMxLjc2NzNDMTUxLjUwNSAzMS43NjczIDE1NS40NDcgMzAuNjU3IDE1Ny45MTcgMjguNTU2MUMxNTguMTg4IDI4LjMyNjggMTU4LjQ0IDI4LjA4NDggMTU4LjY3NSAyNy44MzNDMTU5LjA2OSAyOC4yNDk0IDE1OS41MTUgMjguNjMwMyAxNjAuMDEyIDI4Ljk2NThDMTYzLjQyOCAzMS4yODMxIDE2Ny44MDggMzEuNzY3MyAxNzAuODg1IDMxLjc2NzNDMTc1Ljg2OSAzMS43NjczIDE3OS44MTEgMzAuNjU3IDE4Mi4yODEgMjguNTU2MUMxODIuNTUyIDI4LjMyNjggMTgyLjgwNCAyOC4wODQ4IDE4My4wNCAyNy44MzNDMTgzLjQzMyAyOC4yNDk0IDE4My44NzkgMjguNjMwMyAxODQuMzc2IDI4Ljk2NThDMTg3Ljc5MSAzMS4yODMxIDE5Mi4xNzIgMzEuNzY3MyAxOTUuMjQ5IDMxLjc2NzNDMjAwLjIzMyAzMS43NjczIDIwNC4xNzUgMzAuNjU3IDIwNi42NDUgMjguNTU2MUMyMDguODIxIDI2LjcwNjcgMjA5Ljg3NiAyNC4xNTcxIDIwOS44NzYgMjAuNzYxOUMyMDkuODc2IDIwLjU0ODkgMjA5Ljg3IDIwLjMzOTEgMjA5Ljg2MyAyMC4xMzI1QzIwOS44NzMgMTkuOTE5NiAyMDkuODc2IDE5LjcwMzMgMjA5Ljg3NiAxOS40ODM5QzIwOS44NzYgMTguODc3MSAyMDkuODQxIDE4LjI5OTQgMjA5Ljc3MyAxNy43NDQzQzIwOS40NiAyMC4yODQzIDIwOC40MyAyMi4yNzU1IDIwNi42NDUgMjMuNzkyNFoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTExNy44MDIgMTguMzI1M0wxMTguMzE1IDE5Ljc1MThDMTE4LjU3NiAyMC40Nzc5IDExOC45MjUgMjAuOTg0NiAxMTkuMzA5IDIxLjM0OTNMMTIwLjI2OCAyMS4yMTM4QzEyMS40MDQgMjEuMDUyNCAxMjIuMDE4IDIxLjAyNjYgMTIyLjI3OSAyMS4wMjY2QzEyMy4yNDggMjEuMDI2NiAxMjMuOTYxIDIxLjE3ODMgMTI0LjY1OSAyMS41MzMzQzEyNS40NCAyMS4wODE1IDEyNS44MjQgMjAuNDk0MSAxMjUuODI0IDE5Ljc0MjFDMTI1LjgyNCAxOC45OTAxIDEyNS40NDMgMTguNDQ0NyAxMjQuNjU2IDE4LjA0NzdDMTIzLjk1OCAxNy42OTI3IDEyMy4yNDggMTcuNTQxIDEyMi4yNzYgMTcuNTQxQzEyMi4wMTUgMTcuNTQxIDEyMS40MDQgMTcuNTY2OCAxMjAuMjY1IDE3LjcyODJMMTE2LjM3NSAxOC4yODMzTDExNi4zMzkgMTguNDMxOEwxMTcuNzk5IDE4LjMyNTNIMTE3LjgwMloiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTEwOC4zMDQgMTAuNDY5OEg4OS42MTU1VjEzLjIxMzFIMTA4LjQ4MlYxNS45NjkzTDExNS45MTcgMTYuNjg1N0wxMTYuNzQ2IDEzLjI4MDlMMTA3LjYxMyAxMi40MDNMMTA4LjA2MiAxMS4wNzMzQzEwOC4xMyAxMC44NyAxMDguMjExIDEwLjY2OTkgMTA4LjMwMSAxMC40NzYzTDEwOC4zMDQgMTAuNDY5OFoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTE0OC43MSAxMC41Njk5QzE0Ny42NTcgOS43NTAxMSAxNDYuNzczIDkuNzUwMTEgMTQ2LjM5MiA5Ljc1MDExQzE0NS43NDYgOS43NTAxMSAxNDUuMDcxIDEwLjAyNzcgMTQ0LjM4NyAxMC41Nzk2QzE0My44NzcgMTAuOTg5NCAxNDIuNjkyIDEyLjMzODUgMTQyLjY5MiAxNS45OTUxQzE0Mi42OTIgMTYuNjUwMyAxNDIuNzMxIDE3LjIyNzkgMTQyLjc5NSAxNy43NDExQzE0My4wOTYgMTUuMzc4NyAxNDMuOTY3IDE0LjQwNCAxNDQuMzg3IDE0LjA2ODNDMTQ1LjA3MSAxMy41MTk3IDE0NS43NDYgMTMuMjM4OSAxNDYuMzkyIDEzLjIzODlDMTQ2Ljc2OSAxMy4yMzg5IDE0Ny42NTcgMTMuMjM4OSAxNDguNzEgMTQuMDU4N0MxNDkuMTg4IDE0LjQzMyAxNDkuOTMzIDE1LjM4MTkgMTUwLjE4NSAxNy43MzE0QzE1MC4yNCAxNy4yMjE1IDE1MC4yNzIgMTYuNjQ3IDE1MC4yNzIgMTUuOTk4M0MxNTAuMjcyIDEyLjM0MTcgMTQ5LjI5NCAxMS4wMzE0IDE0OC43MSAxMC41NzYzVjEwLjU2OTlaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik04OS42MTU1IDE4LjI1NzVWMjEuNjM5OEgxMDguMDA3QzEwNy44MTcgMjEuMjQyOCAxMDcuNjgxIDIwLjgyOTcgMTA3LjYwNCAyMC4zOTcyTDEwNy4zNjggMTkuMDc3MkwxMDguNDgyIDE4Ljk5NjZWMTguMjU3NUg4OS42MTU1WiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNNDUuNTQyNiAxMC41Njk5QzQ0LjQ5MDIgOS43NTAxMSA0My42MDU2IDkuNzUwMTEgNDMuMjI0NiA5Ljc1MDExQzQyLjU3OTEgOS43NTAxMSA0MS45MDQyIDEwLjAyNzcgNDEuMjE5OSAxMC41Nzk2QzQwLjYzODkgMTEuMDQ3NSAzOS42NjM4IDEyLjM3MDcgMzkuNjYzOCAxNS45OTUxQzM5LjY2MzggMTYuNjUwMyAzOS42OTYxIDE3LjIyNzkgMzkuNzUxMSAxNy43NDExQzQwLjAwMjggMTUuNDE0MiA0MC43NDIyIDE0LjQ1MjQgNDEuMjE5OSAxNC4wNjgzQzQxLjkwNDIgMTMuNTE5NyA0Mi41NzkxIDEzLjIzODkgNDMuMjI0NiAxMy4yMzg5QzQzLjYwMjQgMTMuMjM4OSA0NC40OTAyIDEzLjIzODkgNDUuNTQyNiAxNC4wNTg3QzQ2LjAyMDMgMTQuNDMzIDQ2Ljc2NjIgMTUuMzgxOSA0Ny4wMTc5IDE3LjczMTRDNDcuMDcyNyAxNy4yMjE1IDQ3LjEwNSAxNi42NDcgNDcuMTA1IDE1Ljk5ODNDNDcuMTA1IDEyLjM0MTcgNDYuMTI3IDExLjAzMTQgNDUuNTQyNiAxMC41NzYzVjEwLjU2OTlaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik0xMjMuNDkzIDEwLjA3OTNDMTIzLjAwNiA5Ljg0MzcxIDEyMi41MzEgOS43NDY4OSAxMjEuODYgOS43NDY4OUMxMjEuMTQgOS43NDY4OSAxMjAuNjM2IDkuODUwMTYgMTIwLjEyIDEwLjEwNTFDMTE5LjY1OCAxMC4zMzQzIDExOS4wNDggMTAuODIxNiAxMTguNzY0IDExLjg1NzZMMTE4LjQ5NiAxMi44NDE5TDEyMC41NTUgMTIuOTE5NEMxMjIuMTE1IDEyLjkwNjUgMTIyLjg2NCAxMi42NjEyIDEyMy4yOTMgMTIuNDc0QzEyMy43MjIgMTIuMjg2OCAxMjQuMjkxIDExLjk1NzcgMTI0LjI5MSAxMS4yMTUzQzEyNC4yOTEgMTAuNDczIDEyMy42OSAxMC4xNjk3IDEyMy40OTMgMTAuMDcyOVYxMC4wNzkzWiIgZmlsbD0iIzAwMDBGRiIvPgo8cGF0aCBkPSJNMTczLjA3NCAxMC41Njk5QzE3Mi4wMjEgOS43NTAxMSAxNzEuMTM3IDkuNzUwMTEgMTcwLjc1NiA5Ljc1MDExQzE3MC4xMSA5Ljc1MDExIDE2OS40MzUgMTAuMDI3NyAxNjguNzUxIDEwLjU3OTZDMTY4LjI0MSAxMC45ODk0IDE2Ny4wNTYgMTIuMzM4NSAxNjcuMDU2IDE1Ljk5NTFDMTY3LjA1NiAxNi42NTAzIDE2Ny4wOTUgMTcuMjI3OSAxNjcuMTYgMTcuNzQxMUMxNjcuNDYgMTUuMzc4NyAxNjguMzMxIDE0LjQwNCAxNjguNzUxIDE0LjA2ODNDMTY5LjQzNSAxMy41MTk3IDE3MC4xMSAxMy4yMzg5IDE3MC43NTYgMTMuMjM4OUMxNzEuMTM0IDEzLjIzODkgMTcyLjAyMSAxMy4yMzg5IDE3My4wNzQgMTQuMDU4N0MxNzMuNTUxIDE0LjQzMyAxNzQuMjk3IDE1LjM4MTkgMTc0LjU0OSAxNy43MzE0QzE3NC42MDQgMTcuMjIxNSAxNzQuNjM2IDE2LjY0NyAxNzQuNjM2IDE1Ljk5ODNDMTc0LjYzNiAxMi4zNDE3IDE3My42NTggMTEuMDMxNCAxNzMuMDc0IDEwLjU3NjNWMTAuNTY5OVoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTE5Ny40MzQgMTAuNTY5OUMxOTYuMzgyIDkuNzUwMTEgMTk1LjQ5NyA5Ljc1MDExIDE5NS4xMTcgOS43NTAxMUMxOTQuNDcxIDkuNzUwMTEgMTkzLjc5NiAxMC4wMjc3IDE5My4xMTIgMTAuNTc5NkMxOTIuNjAyIDEwLjk4OTQgMTkxLjQxNyAxMi4zMzg1IDE5MS40MTcgMTUuOTk1MUMxOTEuNDE3IDE2LjY1MDMgMTkxLjQ1NiAxNy4yMjc5IDE5MS41MiAxNy43NDExQzE5MS44MjEgMTUuMzc4NyAxOTIuNjkyIDE0LjQwNCAxOTMuMTEyIDE0LjA2ODNDMTkzLjc5NiAxMy41MTk3IDE5NC40NzEgMTMuMjM4OSAxOTUuMTE3IDEzLjIzODlDMTk1LjQ5NCAxMy4yMzg5IDE5Ni4zODIgMTMuMjM4OSAxOTcuNDM0IDE0LjA1ODdDMTk3LjkxMiAxNC40MzMgMTk4LjY1OCAxNS4zODE5IDE5OC45MSAxNy43MzE0QzE5OC45NjUgMTcuMjIxNSAxOTguOTk3IDE2LjY0NyAxOTguOTk3IDE1Ljk5ODNDMTk4Ljk5NyAxMi4zNDE3IDE5OC4wMTkgMTEuMDMxNCAxOTcuNDM0IDEwLjU3NjNWMTAuNTY5OVoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTIwOS42NzYgMTMuNjE5N0MyMDkuMjIxIDExLjAyMTcgMjA3Ljk3MiA5LjA0MDEgMjA1Ljg4MyA3LjYxMDM4QzIwMy4zODEgNS44OTAxOCAxOTkuNzIzIDQuOTgwMDUgMTk1LjMwNyA0Ljk4MDA1QzE5MC4zNDUgNC45ODAwNSAxODYuNDEzIDYuMDg3MDYgMTgzLjkzMSA4LjE4MTZDMTgzLjYxMSA4LjQ1MjcgMTgzLjMxNyA4LjczOTk1IDE4My4wNDMgOS4wNDMzMkMxODIuNTU4IDguNTE3MjYgMTgyLjAxIDguMDM5NjEgMTgxLjM4MyA3LjYxMDM4QzE3OC44NDYgNS44NjQzNiAxNzUuMzMgNC45ODAwNSAxNzAuOTQzIDQuOTgwMDVDMTY1Ljk4MSA0Ljk4MDA1IDE2Mi4wNDkgNi4wODcwNiAxNTkuNTY3IDguMTgxNkMxNTkuMjcgOC40MzMzNiAxNTguOTk1IDguNjk3OTkgMTU4Ljc0IDguOTcyMzJDMTU4LjI3OSA4LjQ3MjA3IDE1Ny43NTUgOC4wMTcwMiAxNTcuMTU4IDcuNjEwMzhDMTU0LjY1NiA1Ljg5MDE4IDE1MC45OTUgNC45ODAwNSAxNDYuNTc5IDQuOTgwMDVDMTQxLjYxNyA0Ljk4MDA1IDEzNy42ODUgNi4wODcwNiAxMzUuMjAyIDguMTgxNkMxMzQuODkzIDguNDQzMDMgMTM0LjYwOCA4LjcxNzM2IDEzNC4zNDcgOS4wMDc4M0MxMzMuNzA4IDguMTkxMyAxMzIuNzA0IDcuNDU1NDQgMTMxLjMyNSA2LjgwOTk5QzEyOC43MjYgNS41OTY0OSAxMjUuNTE4IDQuOTgwMDUgMTIxLjc4MiA0Ljk4MDA1QzExOC4wNDcgNC45ODAwNSAxMTUuMTU4IDUuNTMxOTMgMTEyLjY0NiA2LjYxOTU2QzExMS40NzggNy4xMjYyNiAxMTAuNTEyIDcuNzQyNjkgMTA5Ljc1NCA4LjQ2MjRWNS40MjU0M0g3OC43OTExVjE1LjcwNzlMNjYuMDQyNCA1LjQyNTQzSDU2LjIzODFWOS43OTIwN0M1NS42NDQgOC45NTk0MiA1NC44OTg0IDguMjMzMjYgNTMuOTk0MyA3LjYxMzZDNTEuNDkyNSA1Ljg5MzQxIDQ3LjgzNDcgNC45ODMyNyA0My40MTUzIDQuOTgzMjdDMzkuNDEyMiA0Ljk4MzI3IDM2LjA4MDYgNS43MDI5OCAzMy42Mzk5IDcuMDgxMDdWNS40MjU0M0gwLjA5NDYwNDVWMTAuNDczSDExLjMyOTFWMjYuNjg3M0gyMi4zNDczVjEwLjQ3M0gzMC4xMDVDMjkuMzI2OSAxMS44MTI0IDI4Ljg5NzYgMTMuMzkwNiAyOC44MDcyIDE1LjIzNjdDMjguNzk0MyAxNS40ODg0IDI4Ljc4NzggMTUuNzQwMSAyOC43ODc4IDE2LjAwMTZDMjguNzg3OCAxNi42Mjc3IDI4LjgyMzQgMTcuMjE4MyAyOC44ODc5IDE3Ljc4MzFDMjkuMjIwNCAyMC42ODEyIDMwLjQwMjEgMjIuNzkyIDMyLjQ4NDEgMjQuMjA1NUMzNS44OTk3IDI2LjUyMjcgNDAuMjgwNiAyNy4wMDY4IDQzLjM1NzEgMjcuMDA2OEM0OC4zNDE2IDI3LjAwNjggNTIuMjgzNSAyNS44OTY3IDU0Ljc1MzEgMjMuNzk1N0M1NS4zMjc4IDIzLjMwODMgNTUuODIxOCAyMi43Njk0IDU2LjI0MTMgMjIuMTgyVjI2LjY4NzNINjcuMDg4NVYxNi40MDgyTDc5LjgwODEgMjYuNjg3M0gxMTAuNTU0VjI0LjMyODJDMTEwLjk5NyAyNC42MTIxIDExMS40ODcgMjQuODggMTEyLjAyNyAyNS4xMjg1QzExNC43MTkgMjYuMzc0MyAxMTguMDUgMjcuMDA2OCAxMjEuOTM0IDI3LjAwNjhDMTI2LjA2MyAyNy4wMDY4IDEyOS42NDMgMjYuMzAwMSAxMzIuNTY4IDI0LjkwMjVDMTMzLjQ0NiAyNC40ODMyIDEzNC4xODkgMjQuMDI4IDEzNC43OTkgMjMuNTQwN0MxMzUuMDY0IDIzLjc3NjMgMTM1LjM1MSAyMy45OTkgMTM1LjY1NSAyNC4yMDU1QzEzOS4wNyAyNi41MjI3IDE0My40NTEgMjcuMDA2OCAxNDYuNTI3IDI3LjAwNjhDMTUxLjUxMiAyNy4wMDY4IDE1NS40NTQgMjUuODk2NyAxNTcuOTIzIDIzLjc5NTdDMTU4LjE5NSAyMy41NjY1IDE1OC40NDYgMjMuMzI0NSAxNTguNjgyIDIzLjA3MjdDMTU5LjA3NiAyMy40ODkxIDE1OS41MjEgMjMuODY5OSAxNjAuMDE5IDI0LjIwNTVDMTYzLjQzNCAyNi41MjI3IDE2Ny44MTUgMjcuMDA2OCAxNzAuODkxIDI3LjAwNjhDMTc1Ljg3NiAyNy4wMDY4IDE3OS44MTggMjUuODk2NyAxODIuMjg3IDIzLjc5NTdDMTgyLjU1OCAyMy41NjY1IDE4Mi44MSAyMy4zMjQ1IDE4My4wNDYgMjMuMDcyN0MxODMuNDQgMjMuNDg5MSAxODMuODg1IDIzLjg2OTkgMTg0LjM4MyAyNC4yMDU1QzE4Ny43OTggMjYuNTIyNyAxOTIuMTc5IDI3LjAwNjggMTk1LjI1NSAyNy4wMDY4QzIwMC4yNCAyNy4wMDY4IDIwNC4xODIgMjUuODk2NyAyMDYuNjUxIDIzLjc5NTdDMjA4LjQzNyAyMi4yNzg4IDIwOS40NjcgMjAuMjg3NSAyMDkuNzggMTcuNzQ3NkMyMDkuODQ4IDE3LjE5MjQgMjA5Ljg4MyAxNi42MTE1IDIwOS44ODMgMTYuMDAxNkMyMDkuODgzIDE1LjE1NiAyMDkuODE1IDE0LjM2NTMgMjA5LjY4NiAxMy42MjNMMjA5LjY3NiAxMy42MTk3Wk0xMTYuNzQ2IDEzLjI3NDRMMTE1LjkxNyAxNi42NzkzTDExNS40OTcgMTguNDAyN0wxMTYuMzc1IDE4LjI3NjhMMTIwLjI2NSAxNy43MjE3QzEyMS40MDEgMTcuNTYwNCAxMjIuMDE1IDE3LjUzNDUgMTIyLjI3NiAxNy41MzQ1QzEyMy4yNDUgMTcuNTM0NSAxMjMuOTU4IDE3LjY4NjIgMTI0LjY1NiAxOC4wNDEyQzEyNS40NDMgMTguNDQxNCAxMjUuODI0IDE4Ljk5NjYgMTI1LjgyNCAxOS43MzU2QzEyNS44MjQgMjAuNDc0NyAxMjUuNDQgMjEuMDc1IDEyNC42NTkgMjEuNTI2OEMxMjQuNTk3IDIxLjU2MjMgMTI0LjUzOSAyMS41OTc4IDEyNC40NzUgMjEuNjMzM0MxMjMuNDM1IDIyLjE2MjYgMTIyLjUzMSAyMi4yMzM2IDEyMS44NiAyMi4yMzM2QzEyMS4zNDcgMjIuMjMzNiAxMjAuMjMzIDIyLjIzMDQgMTE5LjMxIDIxLjM0NjFDMTE4LjkyOSAyMC45ODE0IDExOC41OCAyMC40NzQ3IDExOC4zMTUgMTkuNzQ4NUwxMTcuODAyIDE4LjMyMkwxMTYuMzQzIDE4LjQyODVMMTA4LjQ4NSAxOC45OTY2TDEwNy4zNzEgMTkuMDc3MkwxMDcuNjA3IDIwLjM5NzJDMTA3LjY4NSAyMC44Mjk3IDEwNy44MiAyMS4yNDI4IDEwOC4wMSAyMS42Mzk4SDg5LjYxODlWMTguMjU3NUgxMDguNDg1VjEzLjIwOTlIODkuNjE4OVYxMC40NjY2SDEwOC4zMDdDMTA4LjIxNyAxMC42NjAyIDEwOC4xMzYgMTAuODYwMyAxMDguMDY5IDExLjA2MzdMMTA3LjYyIDEyLjM5MzNMMTE2Ljc1MyAxMy4yNzEyTDExNi43NDYgMTMuMjc0NFpNMTIzLjI5MyAxMi40NzcyQzEyMi44NjQgMTIuNjY0NCAxMjIuMTE4IDEyLjkwOTcgMTIwLjU1NiAxMi45MjI2TDExOC40OTYgMTIuODQ1MkwxMTguNzY0IDExLjg2MDhDMTE5LjA0NSAxMC44MjQ4IDExOS42NTUgMTAuMzM3NSAxMjAuMTIgMTAuMTA4NEMxMjAuNjM2IDkuODUzMzggMTIxLjE0IDkuNzUwMTEgMTIxLjg2IDkuNzUwMTFDMTIyLjUzMSA5Ljc1MDExIDEyMy4wMDYgOS44NDY5MyAxMjMuNDkzIDEwLjA4MjVDMTIzLjY5IDEwLjE3OTMgMTI0LjI5MSAxMC40NjY2IDEyNC4yOTEgMTEuMjI1QzEyNC4yOTEgMTEuOTgzNSAxMjMuNzIzIDEyLjI5NjUgMTIzLjI5MyAxMi40ODM3VjEyLjQ3NzJaTTE1MC4xODUgMTcuNzI1QzE0OS45MzMgMjAuMDU1MSAxNDkuMTg4IDIxLjAxNjkgMTQ4LjcwNyAyMS40MDA5QzE0OC4wMTYgMjEuOTUyOCAxNDcuMzIyIDIyLjIzMzYgMTQ2LjY1MyAyMi4yMzM2QzE0Ni4yOTIgMjIuMjMzNiAxNDUuNDQ5IDIyLjIzMzYgMTQ0LjM5NyAyMS40MTA2QzE0My45NzQgMjEuMDgxNCAxNDMuMDk2IDIwLjExNjQgMTQyLjc5NSAxNy43Mzc5QzE0Mi43MzEgMTcuMjI0NyAxNDIuNjkyIDE2LjY0NyAxNDIuNjkyIDE1Ljk5MTlDMTQyLjY5MiAxMi4zMzUyIDE0My44NzcgMTAuOTg5NCAxNDQuMzg3IDEwLjU3NjNDMTQ1LjA3MiAxMC4wMjc3IDE0NS43NDYgOS43NDY4OSAxNDYuMzkyIDkuNzQ2ODlDMTQ2Ljc2OSA5Ljc0Njg5IDE0Ny42NTcgOS43NDY4OSAxNDguNzEgMTAuNTY2NkMxNDkuMjk0IDExLjAyMTcgMTUwLjI3MiAxMi4zMzIgMTUwLjI3MiAxNS45ODg2QzE1MC4yNzIgMTYuNjQwNiAxNTAuMjQgMTcuMjExOCAxNTAuMTg1IDE3LjcyMTdWMTcuNzI1Wk0xNzQuNTQ5IDE3LjcyNUMxNzQuMjk3IDIwLjA1NTEgMTczLjU1MiAyMS4wMTY5IDE3My4wNzEgMjEuNDAwOUMxNzIuMzggMjEuOTUyOCAxNzEuNjg2IDIyLjIzMzYgMTcxLjAxNyAyMi4yMzM2QzE3MC42NTYgMjIuMjMzNiAxNjkuODEzIDIyLjIzMzYgMTY4Ljc2MSAyMS40MTA2QzE2OC4zMzggMjEuMDgxNCAxNjcuNDYgMjAuMTE2NCAxNjcuMTYgMTcuNzM3OUMxNjcuMDk1IDE3LjIyNDcgMTY3LjA1NiAxNi42NDcgMTY3LjA1NiAxNS45OTE5QzE2Ny4wNTYgMTIuMzM1MiAxNjguMjQxIDEwLjk4OTQgMTY4Ljc1MSAxMC41NzYzQzE2OS40MzUgMTAuMDI3NyAxNzAuMTEgOS43NDY4OSAxNzAuNzU2IDkuNzQ2ODlDMTcxLjEzNCA5Ljc0Njg5IDE3Mi4wMjEgOS43NDY4OSAxNzMuMDc0IDEwLjU2NjZDMTczLjY1OCAxMS4wMjE3IDE3NC42MzYgMTIuMzMyIDE3NC42MzYgMTUuOTg4NkMxNzQuNjM2IDE2LjY0MDYgMTc0LjYwNCAxNy4yMTE4IDE3NC41NDkgMTcuNzIxN1YxNy43MjVaTTE5OC45MSAxNy43MjVDMTk4LjY1OCAyMC4wNTUxIDE5Ny45MTIgMjEuMDE2OSAxOTcuNDMxIDIxLjQwMDlDMTk2Ljc0MSAyMS45NTI4IDE5Ni4wNDYgMjIuMjMzNiAxOTUuMzc4IDIyLjIzMzZDMTk1LjAxNyAyMi4yMzM2IDE5NC4xNzQgMjIuMjMzNiAxOTMuMTIyIDIxLjQxMDZDMTkyLjY5OSAyMS4wODE0IDE5MS44MjEgMjAuMTE2NCAxOTEuNTIgMTcuNzM3OUMxOTEuNDU2IDE3LjIyNDcgMTkxLjQxNyAxNi42NDcgMTkxLjQxNyAxNS45OTE5QzE5MS40MTcgMTIuMzM1MiAxOTIuNjAyIDEwLjk4OTQgMTkzLjExMiAxMC41NzYzQzE5My43OTYgMTAuMDI3NyAxOTQuNDcxIDkuNzQ2ODkgMTk1LjExNyA5Ljc0Njg5QzE5NS40OTQgOS43NDY4OSAxOTYuMzgyIDkuNzQ2ODkgMTk3LjQzNSAxMC41NjY2QzE5OC4wMTkgMTEuMDIxNyAxOTguOTk3IDEyLjMzMiAxOTguOTk3IDE1Ljk4ODZDMTk4Ljk5NyAxNi42NDA2IDE5OC45NjUgMTcuMjExOCAxOTguOTEgMTcuNzIxN1YxNy43MjVaTTQ3LjAxOCAxNy43MjVDNDYuNzY2MyAyMC4wNTUxIDQ2LjAyMDQgMjEuMDE2OSA0NS41NDI3IDIxLjQwMDlDNDQuODUxOCAyMS45NTI4IDQ0LjE1NzggMjIuMjMzNiA0My40ODk1IDIyLjIzMzZDNDMuMTI3OSAyMi4yMzM2IDQyLjI4NTMgMjIuMjMzNiA0MS4yMzI4IDIxLjQxMDZDNDAuNzUyIDIxLjAzNjIgNDAuMDA2MSAyMC4wODA5IDM5Ljc1NDMgMTcuNzM3OUMzOS42OTk1IDE3LjIyNDcgMzkuNjY3MyAxNi42NDcgMzkuNjY3MyAxNS45OTE5QzM5LjY2NzMgMTIuMzcwNyA0MC42NDIxIDExLjA0NDMgNDEuMjIzMSAxMC41NzYzQzQxLjkwNzcgMTAuMDI3NyA0Mi41ODIzIDkuNzQ2ODkgNDMuMjI4MSA5Ljc0Njg5QzQzLjYwNTYgOS43NDY4OSA0NC40OTM0IDkuNzQ2ODkgNDUuNTQ1OCAxMC41NjY2QzQ2LjEzMDIgMTEuMDIxNyA0Ny4xMDg1IDEyLjMzMiA0Ny4xMDg1IDE1Ljk4ODZDNDcuMTA4NSAxNi42NDA2IDQ3LjA3NjIgMTcuMjExOCA0Ny4wMjEyIDE3LjcyMTdMNDcuMDE4IDE3LjcyNVoiIGZpbGw9IiNGRkZGMDAiLz4KPC9nPgo8ZGVmcz4KPGNsaXBQYXRoIGlkPSJjbGlwMF8zNTg2Xzk2NzciPgo8cmVjdCB3aWR0aD0iMjEwIiBoZWlnaHQ9IjMyIiBmaWxsPSJ3aGl0ZSIvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo="); }
+.t3k-mark { aspect-ratio: 94 / 32; height: 13px; background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTQiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCA5NCAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAwXzM1ODZfOTY3OCkiPgo8cGF0aCBkPSJNMzMuNjA3IDYuNjg0MUMzMy42NTU1IDYuNjYxNTEgMzMuNzAwNSA2LjY0MjE2IDMzLjc0NTYgNi42MTk1N0MzNi4yNTUgNS41MzE5MyAzOS4zMjU1IDQuOTgwMDUgNDIuODc2NCA0Ljk4MDA1QzQ2LjYwODEgNC45ODAwNSA0OS44MTc0IDUuNTk2NDkgNTIuNDEwNCA2LjgxMzE5QzU0LjMzOTEgNy43MTY4OCA1NS41NDU0IDguNzk4MDQgNTYuMDE5NSAxMC4wNDA2VjUuNDI1NDNINjcuMDc1OVYwLjY2MTgyNUg1Ni4wMTk1VjUuMjc2OTdDNTUuNTQ1NCA0LjAzNDQzIDU0LjMzOTEgMi45NTMyNiA1Mi40MTA0IDIuMDQ5NTlDNDkuODE0IDAuODMyODc1IDQ2LjYwNDkgMC4yMTY0NDYgNDIuODc2NCAwLjIxNjQ0NkMzOS4xNDgyIDAuMjE2NDQ2IDM2LjI1NSAwLjc2ODMyOSAzMy43NDU2IDEuODU1OTVDMzMuNjk3NCAxLjg3NTMyIDMzLjY1MjEgMS44OTc5MSAzMy42MDcgMS45MjA1VjAuNjU4NTk4SDAuMTA1ODM1VjUuNDIyMjFIMzMuNjA3VjYuNjg0MVoiIGZpbGw9IiNGRjAwMDAiLz4KPHBhdGggZD0iTTc5LjEyODkgNS40MjU0NEg4NC43Mzc2TDkzLjg2NTEgMC42NjE4MTlINzkuMTI4OUw2Ny4wNzU4IDcuMTU4NTNWMTEuOTIyMUw3OS4xMjg5IDUuNDI1NDRaIiBmaWxsPSIjRkYwMDAwIi8+CjxwYXRoIGQ9Ik01Ni4wMTk2IDIzLjQwODRDNTUuMzg0MSAyMy45NDQxIDU0LjU5MzggMjQuNDQxMiA1My42NDU2IDI0Ljg5NjJDNTAuNzIzNiAyNi4yOTM2IDQ3LjE0NjggMjcuMDAwNSA0My4wMjE0IDI3LjAwMDVDMzkuMTQ0NyAyNy4wMDA1IDM1LjgxMyAyNi4zNjggMzMuMTIzMSAyNS4xMjIyQzMyLjE4MTQgMjQuNjg2MyAzMS4zODQ2IDI0LjE5NTkgMzAuNzM2MyAyMy42NTY5TDI4LjQ2ODkgMjMuODIxNUwyOC43MDc3IDI1LjE1NDRDMjkuMDU1OSAyNy4wOTcyIDMwLjU0MjkgMjguNjkxNiAzMy4xMjMxIDI5Ljg4NThDMzUuODEzIDMxLjEzMTQgMzkuMTQ0NyAzMS43NjQxIDQzLjAyMTQgMzEuNzY0MUM0Ny4xNDY4IDMxLjc2NDEgNTAuNzIzNiAzMS4wNTcyIDUzLjY0NTYgMjkuNjU5OUM1NC41OTM4IDI5LjIwOCA1NS4zODQxIDI4LjcxMSA1Ni4wMTk2IDI4LjE3MTlWMzEuNDQ0Nkg2Ny4wNzU3VjI2LjY4MUg1Ni4wMTk2VjIzLjQwODRaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik0yMi4zNTcxIDI2LjY4NDFIMTEuMzAwOFYzMS40NDc3SDIyLjM1NzFWMjYuNjg0MVoiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTExLjMwMDggMTAuNDk1NkgwLjEwNTgzNVYxNS4yNTkySDExLjMwMDhWMTAuNDk1NloiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTQ0LjU0NyAxMC4xMDE5QzQ0LjA2OTggOS44Njk1MiA0My42MDUzIDkuNzc1OTIgNDIuOTQ3MyA5Ljc3NTkyQzQyLjI0NDMgOS43NzU5MiA0MS43NTA4IDkuODc5MiA0MS4yNDQ0IDEwLjEyNzdDNDAuNzg2NiAxMC4zNTM2IDQwLjE4MzMgMTAuODM3NyAzOS45MDI4IDExLjg2NzNMMzkuNjQxNCAxMi44MzIyTDQxLjY1MDcgMTIuOTA5N0M0My4xOTI1IDEyLjg5NjggNDMuOTI3OCAxMi42NTQ3IDQ0LjM1MDMgMTIuNDcwOEM0NC43NzI4IDEyLjI4NjggNDUuMzM0MiAxMS45NjA4IDQ1LjMzNDIgMTEuMjI4MkM0NS4zMzQyIDEwLjQ5NTYgNDQuNzQ0IDEwLjE5NTUgNDQuNTQ3IDEwLjEwMTlaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik01NC41ODEgMTQuMjUyM0M1NC4zMzI3IDE0LjQ0OTIgNTQuMDYxNiAxNC42MzMxIDUzLjc2ODIgMTQuODEzOUM1My44Mjk1IDE0LjgzOTcgNTMuODkwOCAxNC44NjU1IDUzLjk1MjEgMTQuODkxM0M1NC43NDU1IDE1LjIzNjYgNTUuNDM1NyAxNS42NDk4IDU2LjAxOTMgMTYuMTI0MlYxMi40NTc5QzU1Ljc1ODIgMTMuMTAzNCA1NS4yODA5IDEzLjcwMzcgNTQuNTgxIDE0LjI1NTVWMTQuMjUyM1oiIGZpbGw9IiMwMDAwRkYiLz4KPHBhdGggZD0iTTM5LjQ1NDMgMTkuNzM4OEM0MC4zNDEyIDIyLjIwNDUgNDIuMjM0NSAyMi4yMDQ1IDQyLjk0NzMgMjIuMjA0NUM0My42MDg0IDIyLjIwNDUgNDQuNDk4OCAyMi4xMzY4IDQ1LjUyNDMgMjEuNjEzOUM0Ni40MjQzIDIxLjE1MjQgNDYuODYyOCAyMC41MzkyIDQ2Ljg2MjggMTkuNzMyNEM0Ni44NjI4IDE4Ljk5NjUgNDYuNDg1NCAxOC40NDc5IDQ1LjcwODIgMTguMDUwOUM0NS4wMjExIDE3LjcwMjQgNDQuMzIxMiAxNy41NTA3IDQzLjM2NjcgMTcuNTUwN0M0My4xMDg2IDE3LjU1MDcgNDIuNTAyMiAxNy41NzMzIDQxLjM3MzMgMTcuNzM0NkwzNi41NjQ1IDE4LjQyMjFMMzcuODEyNyAxMy4yOTA1TDI4LjcxNCAxMi40MTI3TDI5LjE2NTYgMTEuMDY2OUMyOS4yMzM1IDEwLjg3IDI5LjMxMDggMTAuNjc5NiAyOS4zOTQ2IDEwLjQ4OTJIMjIuMzU3MVYxNS4yNTI4SDI4LjY0MzFMMjguNzA3NyAxNS42MjA3QzI4LjkzMDIgMTYuODUzNiAyOS42MDc1IDE3Ljk0NzYgMzAuNzM2MyAxOC44ODY4TDM4LjkzODIgMTguMjkzTDM5LjQ1NzcgMTkuNzMyNEwzOS40NTQzIDE5LjczODhaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik02OC44Nzg4IDE4LjQ2NEw2Ny4wNzU4IDE5LjQwMzJWMjQuMTY2OEw2OC44Nzg4IDIzLjIyNzZMNzkuNTY3NCAzMS40NDc4SDkzLjIxNjhMODYuNzE0OCAyNi42ODQxSDc5LjU2NzRMNjguODc4OCAxOC40NjRaIiBmaWxsPSIjMDAwMEZGIi8+CjxwYXRoIGQ9Ik04NC43Mzc3IDUuNDI1NDJINzkuMTI4OUw2Ny4wNzU5IDExLjkyMjFWNS40MjU0Mkg1Ni4wMTk1VjEwLjA0MDZDNTUuNTQ1NCA4Ljc5ODAzIDU0LjMzOTEgNy43MTY4NyA1Mi40MTA0IDYuODEzMjFDNDkuODE0IDUuNTk2NDggNDYuNjA0OSA0Ljk4MDA0IDQyLjg3NjQgNC45ODAwNEMzOS4xNDgyIDQuOTgwMDQgMzYuMjU1IDUuNTMxOTIgMzMuNzQ1NiA2LjYxOTU2QzMzLjY5NzQgNi42Mzg5MyAzMy42NTIxIDYuNjYxNTIgMzMuNjA3IDYuNjg0MDlWNS40MjIySDAuMTA1ODM1VjEwLjQ5MjRIMTEuMzAwOFYyNi42Nzc4SDIyLjM1NzJWMTAuNDkyNEgyOS4zOTQ3QzI5LjMxMDkgMTAuNjc5NiAyOS4yMzAyIDEwLjg3MzIgMjkuMTY1OCAxMS4wNzAxTDI4LjcxNDIgMTIuNDE1OUwzNy44MTI4IDEzLjI5MzhMMzYuNTY0NiAxOC40MjUzTDQxLjM3MzQgMTcuNzM3OUM0Mi41MDI0IDE3LjU3NjUgNDMuMTA1NCAxNy41NTM5IDQzLjM2NjggMTcuNTUzOUM0NC4zMjEzIDE3LjU1MzkgNDUuMDIxMiAxNy43MDI0IDQ1LjcwODMgMTguMDU0MUM0Ni40ODU1IDE4LjQ1MTEgNDYuODYzIDE4Ljk5OTggNDYuODYzIDE5LjczNTZDNDYuODYzIDIwLjU0MjUgNDYuNDI0MiAyMS4xNTg5IDQ1LjUyNDQgMjEuNjE3MkM0NC40OTg5IDIyLjE0MzIgNDMuNjA4NiAyMi4yMDc4IDQyLjk0NzQgMjIuMjA3OEM0Mi4yMzQ3IDIyLjIwNzggNDAuMzQxMyAyMi4yMDc4IDM5LjQ1NDQgMTkuNzQyMUwzOC45MzUyIDE4LjMwMjdMMzAuNzMzMiAxOC44OTY1TDI4LjQ2NTggMTkuMDYxMUwyOC43MDQ1IDIwLjM5NEMyOC45MjcxIDIxLjYyNjkgMjkuNjA0NSAyMi43MjA5IDMwLjczMzIgMjMuNjYwMUMzMS4zODE1IDI0LjE5OTEgMzIuMTc4MSAyNC42ODk3IDMzLjEyMDEgMjUuMTI1M0MzNS44MSAyNi4zNzExIDM5LjE0MTYgMjcuMDAzNiA0My4wMTg0IDI3LjAwMzZDNDcuMTQzNSAyNy4wMDM2IDUwLjcyMDMgMjYuMjk3IDUzLjY0MjYgMjQuODk5NEM1NC41OTA4IDI0LjQ0NDQgNTUuMzgwOSAyMy45NTA2IDU2LjAxNjMgMjMuNDExNlYyNi42ODQxSDY3LjA3MjdWMTkuNDA2NEw2OC44NzIzIDE4LjQ2NzJMNzkuNTY0MyAyNi42ODczSDkzLjIxMzdMNzYuNTM4OCAxNC40Njg1TDkzLjg2MiA1LjQyODY1SDg0LjczNDNMODQuNzM3NyA1LjQyNTQyWk00NC4zNTA0IDEyLjQ3MDhDNDMuOTI3OSAxMi42NTQ4IDQzLjE5MjYgMTIuODk2OCA0MS42NTA4IDEyLjkwOTdMMzkuNjQxNCAxMi44MzIzTDM5LjkwMjggMTEuODY3M0M0MC4xODM0IDEwLjgzNzcgNDAuNzg2NCAxMC4zNTM2IDQxLjI0NDUgMTAuMTI3N0M0MS43NTA5IDkuODc1OTcgNDIuMjQ0NCA5Ljc3NTkyIDQyLjk0NzQgOS43NzU5MkM0My42MDU0IDkuNzc1OTIgNDQuMDY2NyA5Ljg2OTUyIDQ0LjU0NzEgMTAuMTAxOUM0NC43NDA3IDEwLjE5NTUgNDUuMzM0MiAxMC40ODI3IDQ1LjMzNDIgMTEuMjI4M0M0NS4zMzQyIDExLjk3MzggNDQuNzcyOSAxMi4yODY4IDQ0LjM1MDQgMTIuNDcwOFpNNTYuMDE5NSAxNi4xMjQyQzU1LjQzNTkgMTUuNjQ5OCA1NC43NDU2IDE1LjIzNjYgNTMuOTUyMiAxNC44OTEzQzUzLjg5MDkgMTQuODY1NSA1My44Mjk2IDE0LjgzOTcgNTMuNzY4MyAxNC44MTM5QzU0LjA2MTcgMTQuNjM2NCA1NC4zMzI4IDE0LjQ0OTIgNTQuNTgxMSAxNC4yNTIzQzU1LjI4MSAxMy43MDA0IDU1Ljc2MTUgMTMuMTAwMSA1Ni4wMTk1IDEyLjQ1NDdWMTYuMTIxVjE2LjEyNDJaIiBmaWxsPSIjRkZGRjAwIi8+CjwvZz4KPGRlZnM+CjxjbGlwUGF0aCBpZD0iY2xpcDBfMzU4Nl85Njc4Ij4KPHJlY3Qgd2lkdGg9Ijk0IiBoZWlnaHQ9IjMyIiBmaWxsPSJ3aGl0ZSIvPgo8L2NsaXBQYXRoPgo8L2RlZnM+Cjwvc3ZnPgo="); }
+.partners { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 8px; }
+.partners .t3k-logo { height: 22px; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>N2Z Bank</h1><span class="muted small">NAM models for the MS-60B+ · nam2zoom 1.2.3's packaging and trainer</span></header>
+
+  <section>
+    <h2>Models</h2>
+    <p class="muted small" style="margin-top:0">Up to 10 NAM models in one effect. Compact models (those nam2zoom.app has
+      converted, in its folder <code>Converted_NAM/Compact</code>) go in as they are. Any other NAM, a capture from
+      TONE3000 for instance, is trained into a Compact one first, with nam2zoom.app's own trainer: about 7½ minutes
+      each on an M1, one after the other.</p>
+    <div class="drop" id="drop">Drop .nam files here or <label class="btn">Choose…<input type="file" id="pick" accept=".nam" multiple hidden></label>
+      or <button id="t3kHere" aria-label="Browse TONE3000…">Browse <span class="t3k-logo" role="img" aria-label="TONE3000"></span>…</button></div>
+    <table id="list" hidden>
+      <thead><tr><th>#</th><th>Model</th><th>Name on the pedal</th><th>Status</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row">
+      <button class="primary" id="build" disabled>Build N2ZBANK and hand it to the installer</button>
+    </div>
+    <div id="result"></div>
+  </section>
+
+  <section>
+    <h2>From <span class="t3k-logo" role="img" aria-label="TONE3000"></span> <a href="https://www.tone3000.com" target="_blank" rel="noopener">Powered by TONE3000</a></h2>
+    <div id="t3kPick">
+      <p class="muted small" style="margin-top:0">Pick a capture in TONE3000's own window. Only what you pick is fetched;
+        it keeps its creator and license, and a tone whose license allows no changes is not trained.</p>
+      <div class="row" style="margin-top:0"><button id="t3kGo"><span class="t3k-mark" aria-hidden="true"></span> Browse TONE3000…</button>
+        <button class="link" id="t3kOut" hidden>Sign out of TONE3000</button></div>
+      <div class="tone" id="t3kSplash" hidden>
+        <div class="partners">MS Plus Bridge <span class="muted">×</span> <span class="t3k-logo" role="img" aria-label="TONE3000"></span></div>
+        <p style="margin-top:0">The MS Plus Bridge works with <b>TONE3000</b> to give you access to a massive library of
+          Neural Amp Modeler (NAM) captures and IRs of real analog gear, created by a global community of musicians.</p>
+        <p class="muted small">You sign in on TONE3000 with your email address and a 6-digit code; no key of your own is needed.</p>
+        <div class="row"><button class="primary" id="t3kContinue">Continue</button><button class="link" id="t3kNot">Not now</button></div>
+      </div>
+      <div id="t3kTone"></div>
+    </div>
+    <p class="small" id="t3kMsg"></p>
+  </section>
+
+  <section>
+    <h2>Before installing</h2>
+    <ul class="plain small">
+      <li>The bank replaces the N2Z Bank on the pedal: same file name. Install it in the <b>Installer</b> tab; it asks for a backup first. AUTO SAVE off, and try it in a patch you do not save.</li>
+      <li>Saved patches that use the bank play the new models in the order above; the Model knob picks them. nam2zoom.app refuses to replace its bank while any saved patch holds an effect that is not Zoom's own. Here the saved patches that use the bank are named after the build, and the choice is yours.</li>
+      <li>The installer asks for a category. PREAMP, the bank's own, leaves it as nam2zoom builds it. Any other makes the installer adapt it (another id), and nam2zoom.app then refuses to replace that bank: from then on install N2Z banks only here.</li>
+      <li>The bank is nam2zoom's precompiled one with only the models and names filled in: no code is built. Its DSP reservation is 150 of 270.</li>
+      <li>Training uses nam2zoom.app's trainer, set up there once (PyTorch, about 1 GB). Close nam2zoom.app while training here: both use the same cache. A trained model is kept where nam2zoom.app keeps its own, in <code>Converted_NAM/Compact</code>.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const MAX = 10, MAX_FILE = 64 * 1024 * 1024;
+// {file, status: "checking" | "direct" | "adaptable" | "training" | "unsupported", reason, label, credit,
+//  job (its training), jobState, progress, esr}
+let models = [];
+let training = {available: false, problem: null, jobs: []};
+let shape = "";                            // what the table shows, but for the progress of a training
+let polling = null;
+
+const post = async (path, body, headers) => (await fetch(path, {method: "POST", body, headers})).json();
+
+function words(entry) {
+  if (entry.status === "checking") return ["muted", "checking…"];
+  if (entry.status === "direct") return ["ok", "ready"];
+  if (entry.status === "training") {
+    if (entry.jobState === "review") return ["no", `ESR ${entry.esr == null ? "?" : entry.esr.toFixed(3)} (the check wants 0.05 at most): listen`];
+    return ["muted", entry.progress || "waiting to train"];
+  }
+  if (entry.status === "adaptable") return training.available
+    ? (entry.failed ? ["no", `training failed: ${entry.failed} – Train tries again`] : ["muted", "needs training"])
+    : ["no", "convert it in nam2zoom.app first" + (training.problem ? `: ${training.problem}` : "")];
+  return ["no", "not usable: " + entry.reason];
+}
+
+function button(text, action, className) {
+  const element = Object.assign(document.createElement("button"), {textContent: text, className: className || ""});
+  element.addEventListener("click", action);
+  return element;
+}
+
+function render() {
+  // only the progress changed: those words, not the rows (a preview that plays keeps playing)
+  const now = JSON.stringify([models.map(entry => [entry.file.name, entry.status, entry.jobState, entry.reason]), training.available]);
+  if (now === shape) {
+    for (const entry of models) if (entry.words) entry.words.textContent = words(entry)[1];
+    return;
+  }
+  shape = now;
+  const body = $("list").querySelector("tbody");
+  body.replaceChildren();
+  models.forEach((entry, index) => {
+    const row = body.insertRow();
+    row.insertCell().textContent = index + 1;
+    const name = row.insertCell();
+    name.append(entry.file.name);
+    if (entry.credit) name.append(origin(entry.credit));
+    const label = Object.assign(document.createElement("input"), {value: entry.label, maxLength: 5,
+                                                                 disabled: !["direct", "adaptable", "training"].includes(entry.status)});
+    label.setAttribute("aria-label", "Name on the pedal for " + entry.file.name);
+    label.addEventListener("input", () => { entry.label = label.value.toUpperCase(); });
+    row.insertCell().append(label);
+    const [kind, text] = words(entry);
+    const cell = Object.assign(row.insertCell(), {className: "status " + kind});
+    entry.words = Object.assign(document.createElement("span"), {textContent: text});
+    cell.append(entry.words);
+    if (entry.status === "adaptable" && training.available) cell.append(button("Train", () => train(entry)));
+    if (entry.status === "training" && ["queued", "running"].includes(entry.jobState)) {
+      cell.append(button("Cancel", () => post("nam/train/cancel", JSON.stringify({id: entry.job})).then(poll)));
+    }
+    if (entry.status === "training" && entry.jobState === "review") {
+      for (const which of ["original", "converted"]) {
+        const audio = Object.assign(document.createElement("audio"), {controls: true, preload: "none",
+                                                                      src: `nam/train/preview?id=${entry.job}&which=${which}`});
+        audio.title = which === "original" ? "The capture as it is" : "Trained for the pedal";
+        cell.append(Object.assign(document.createElement("span"), {className: "muted small", textContent: which}), audio);
+      }
+      cell.append(button("Keep it", () => decide(entry, true)), button("Drop it", () => decide(entry, false)));
+    }
+    row.insertCell().append(button("×", () => {
+      if (entry.job && ["queued", "running"].includes(entry.jobState)) {     // or it trains on, with no row to stop it
+        post("nam/train/cancel", JSON.stringify({id: entry.job})).catch(() => {});
+      }
+      models.splice(index, 1); shape = ""; render();
+    }, "x"));
+  });
+  $("list").hidden = !models.length;
+  $("build").disabled = !models.length || models.some(entry => entry.status !== "direct");
+}
+
+function note(kind, text, items) {
+  const box = Object.assign(document.createElement("div"), {className: "note " + kind, textContent: text});
+  if (items && items.length) {
+    const list = document.createElement("ul");
+    for (const item of items) list.append(Object.assign(document.createElement("li"), {textContent: item}));
+    box.append(list);
+  }
+  $("result").append(box);
+}
+
+async function check(entry) {
+  entry.status = "checking";
+  render();
+  try {
+    const found = await post("nam/check?name=" + encodeURIComponent(entry.file.name), entry.file);
+    let label = entry.label || found.label || "";
+    if (!entry.label) {                            // as nam2zoom.app: AMPEG, AMPE2, AMPE3 … (the bank needs them unique)
+      const taken = new Set(models.filter(other => other !== entry).map(other => (other.label || "").toUpperCase()));
+      for (let n = 2, base = label; label && taken.has(label); n++) label = base.slice(0, 5 - String(n).length) + n;
+    }
+    Object.assign(entry, {status: found.status || "unsupported", reason: found.reason || found.error || "", label});
+  } catch (error) {
+    Object.assign(entry, {status: "unsupported", reason: "the installer did not answer"});
+  }
+  render();
+}
+
+async function add(files) {
+  $("result").replaceChildren();
+  for (const file of files) {
+    if (!/\.nam$/i.test(file.name)) continue;
+    if (models.length >= MAX) { note("bad", "A bank holds 10 models at most."); break; }
+    const entry = {file, status: "checking", reason: "", label: "", credit: file.t3kCredit || null};
+    models.push(entry);
+    if (file.size > MAX_FILE) {                     // nam2zoom's own limit
+      Object.assign(entry, {status: "unsupported", reason: "larger than 64 MiB"});
+      render();
+      continue;
+    }
+    await check(entry);
+  }
+}
+
+// ---- training: nam2zoom.app's trainer, one after the other ----
+
+async function train(entry) {
+  const headers = entry.credit ? {"X-Credit": encodeURIComponent(JSON.stringify(entry.credit))} : {};
+  Object.assign(entry, {status: "training", job: null, jobState: null, failed: null, progress: "sending to the trainer…"});
+  render();                                        // no second Train while a large model is on its way
+  try {
+    const reply = await post("nam/train?name=" + encodeURIComponent(entry.file.name), entry.file, headers);
+    if (!reply.ok) Object.assign(entry, {status: "unsupported", reason: reply.error});
+    else Object.assign(entry, {status: "training", job: reply.id, jobState: "queued", progress: "waiting to train"});
+  } catch (error) {
+    Object.assign(entry, {status: "unsupported", reason: "the installer did not answer"});
+  }
+  render();
+  watch();
+}
+
+async function decide(entry, keep) {
+  const reply = await post("nam/train/review", JSON.stringify({id: entry.job, use: keep}));
+  if (!reply.ok) note("bad", reply.error);
+  poll();
+}
+
+function watch() {
+  if (!polling && models.some(entry => entry.status === "training")) polling = setInterval(poll, 1500);
+}
+
+async function poll() {
+  try { training = await (await fetch("nam/train/state")).json(); } catch (error) { return; }
+  for (const entry of models.filter(entry => entry.status === "training")) {
+    const job = training.jobs.find(job => job.id === entry.job);
+    if (!job) continue;
+    entry.jobState = job.state;
+    entry.esr = job.esr;
+    entry.progress = job.state === "queued" ? "waiting to train"
+      : job.epoch ? `training: epoch ${job.epoch} of ${job.epochs}` : job.stage.toLowerCase() + "…";
+    if (job.state === "done") {
+      const reply = await fetch("nam/train/model?id=" + job.id);
+      entry.file = new File([await reply.blob()], decodeURIComponent(reply.headers.get("X-File-Name")));
+      entry.job = null;
+      await check(entry);                           // the trained one: Compact now
+    } else if (job.state === "failed") {
+      Object.assign(entry, {status: "adaptable", failed: job.error, job: null, jobState: null});   // e.g. nam2zoom.app was open
+    } else if (job.state === "cancelled") {
+      Object.assign(entry, {status: "adaptable", job: null, jobState: null});
+    }
+  }
+  render();
+  if (!models.some(entry => entry.status === "training")) { clearInterval(polling); polling = null; }
+}
+
+$("pick").addEventListener("change", event => { add([...event.target.files]); event.target.value = ""; });
+$("drop").addEventListener("dragover", event => { event.preventDefault(); $("drop").classList.add("over"); });
+$("drop").addEventListener("dragleave", () => $("drop").classList.remove("over"));
+$("drop").addEventListener("drop", event => { event.preventDefault(); $("drop").classList.remove("over"); add([...event.dataTransfer.files]); });
+document.addEventListener("dragover", event => event.preventDefault());       // a file dropped beside the box opens nothing
+document.addEventListener("drop", event => event.preventDefault());
+
+$("build").addEventListener("click", async () => {
+  $("result").replaceChildren();
+  $("build").disabled = true;
+  try {
+    // one request: 4 bytes length, the list as JSON, then the models one after the other (workshop._build_bank)
+    const list = new TextEncoder().encode(JSON.stringify({models: models.map(entry =>
+      ({name: entry.file.name, size: entry.file.size, label: entry.label}))}));
+    const size = new Uint8Array(4);
+    new DataView(size.buffer).setUint32(0, list.length, true);
+    const reply = await post("nam/build", new Blob([size, list, ...models.map(entry => entry.file)]));
+    if (!reply.ok) {
+      note("bad", reply.error || "The bank was not built.");
+      return;
+    }
+    note("good", `N2ZBANK.ZD2 + .ZIC are in the installer's list (Model: ${reply.labels.join(", ")}). Install them in the Installer tab.`);
+    const patches = reply.patches;
+    if (!patches) note("warn", "There is no backup yet to see which saved patches use the bank on the pedal: the installer makes one before it installs.");
+    else if (patches.patches.length) note("warn", `These saved patches use the N2Z Bank on the pedal (backup of the ${patches.backup}); after the replacement they play the new models:`, patches.patches);
+  } catch (error) {
+    note("bad", "The installer did not answer.");
+  } finally {
+    render();
+  }
+});
+
+// ---- TONE3000: its own window to sign in and pick; the bridge fetches what was picked ----
+
+const GEAR = {"amp": "Amp", "amp-cab": "Amp + Cab", "full-rig": "Amp + Cab", "pedal": "Pedal", "outboard": "Outboard",
+              "cab": "Cabinet", "space": "Space", "experimental": "Experimental"};
+let t3kSignedIn = false;
+
+function t3kSay(text, bad) { Object.assign($("t3kMsg"), {textContent: text || "", className: "small" + (bad ? " no" : "")}); }
+
+async function t3kStatus() {
+  try {
+    t3kSignedIn = (await (await fetch("t3k/status")).json()).signed_in;
+    $("t3kOut").hidden = !t3kSignedIn;
+  } catch (error) { /* the installer is gone: nothing to show */ }
+}
+
+function t3kOpen() {                              // opened by the click itself, or the browser blocks it
+  $("t3kSplash").hidden = true;
+  window.open("t3k/start?kind=nam", "t3k-nam", "popup,width=1100,height=820");
+  t3kSay("Pick a capture in TONE3000's window…");
+}
+// not signed in yet: first what TONE3000 is (its design requirements), then its window
+function t3kBrowse() {
+  if (t3kSignedIn) return t3kOpen();
+  $("t3kSplash").hidden = false;
+  $("t3kSplash").scrollIntoView({block: "nearest"});
+}
+for (const go of [$("t3kGo"), $("t3kHere")]) {
+  go.addEventListener("click", t3kBrowse);
+  go.addEventListener("pointerenter", t3kStatus);   // signed in or out in the other tab: known before the click
+}
+$("t3kContinue").addEventListener("click", t3kOpen);
+$("t3kNot").addEventListener("click", () => { $("t3kSplash").hidden = true; });
+$("t3kOut").addEventListener("click", async () => { await post("t3k/signout", "{}"); t3kSay("Signed out."); t3kStatus(); });
+
+function picked(message) {      // a message without a kind: a sign-in this program no longer knows
+  if (!message || message.type !== "t3k" || (message.kind && message.kind !== "nam")) return;
+  $("t3kSplash").hidden = true;
+  t3kStatus();
+  if (message.ok) showTone(message.tone_id);
+  else t3kSay(message.error || "Nothing was picked.", !message.canceled);
+}
+window.addEventListener("message", event => { if (event.origin === location.origin) picked(event.data); });
+try { new BroadcastChannel("t3k").onmessage = event => picked(event.data); } catch (error) { /* an older browser */ }
+
+function link(text, url) {
+  return url ? Object.assign(document.createElement("a"), {textContent: text, href: url, target: "_blank", rel: "noopener"})
+             : document.createTextNode(text);
+}
+
+function picture(url, className) {               // TONE3000's pictures; one the page may not show is left out
+  const image = Object.assign(document.createElement("img"), {src: url, alt: "", className});
+  image.onerror = () => image.remove();
+  return image;
+}
+
+function origin(credit) {                        // where a model came from, on its row
+  const line = Object.assign(document.createElement("div"), {className: "from muted small"});
+  if (credit.image && credit.tone_id) {           // the picture opens the tone again
+    const open = button("", () => showTone(credit.tone_id), "link");
+    open.title = "Show this tone";
+    open.append(picture(credit.image, ""));
+    line.append(open);
+  }
+  const mark = Object.assign(document.createElement("span"), {className: "t3k-mark", role: "img", title: "TONE3000"});
+  mark.setAttribute("aria-label", "TONE3000");
+  line.append(mark, " ", link(credit.tone || "tone", credit.tone_url), " by ", link("@" + (credit.creator || "?"), credit.creator_url),
+              ` · ${credit.license || ""}`);
+  return line;
+}
+
+function toneHead(tone) {      // what TONE3000 asks for: picture, title, gear, format, creator
+  const head = Object.assign(document.createElement("div"), {className: "tonehead"});
+  if (tone.image) head.append(picture(tone.image, "pic"));
+  const text = document.createElement("div");
+  const title = Object.assign(document.createElement("div"), {className: "title"});
+  title.append(link(tone.tone || "Tone", tone.tone_url));
+  const by = Object.assign(document.createElement("div"), {className: "small"});
+  if (tone.avatar) by.append(picture(tone.avatar, "avatar"));
+  by.append(link("@" + (tone.creator || "?"), tone.creator_url));
+  text.append(title, Object.assign(document.createElement("div"), {className: "muted small",
+    textContent: [GEAR[tone.gear] || tone.gear, String(tone.format || "").toUpperCase(), tone.license && "license " + tone.license]
+      .filter(Boolean).join(" · ")}), by);
+  if (tone.description) text.append(Object.assign(document.createElement("p"), {className: "desc muted small", textContent: tone.description}));
+  head.append(text);
+  return head;
+}
+
+async function showTone(id) {
+  t3kSay("Looking at the tone…");
+  const box = $("t3kTone");
+  box.replaceChildren();
+  let reply, found;
+  try {
+    reply = await fetch(`t3k/tone?id=${encodeURIComponent(id)}&kind=nam`);
+    found = await reply.json();
+  } catch (error) { t3kSay("The installer did not answer.", true); return; }
+  if (!reply.ok) { t3kSay(found.error, true); t3kStatus(); return; }
+  t3kSay("");
+  const tone = found.tone, card = Object.assign(document.createElement("div"), {className: "tone"});
+  card.append(toneHead(tone));
+  if (!tone.changes_allowed) {
+    card.append(Object.assign(document.createElement("p"), {className: "no small",
+      textContent: `Its license (${String(tone.license).toUpperCase()}) allows no changes: it cannot be trained for the pedal.`}));
+    box.append(card);
+    return;
+  }
+  const room = Math.max(0, MAX - models.length);  // what still fits into the bank is ticked
+  if (!room) card.append(Object.assign(document.createElement("p"), {className: "no small",
+    textContent: "The bank is full (10 models): remove one above to make room."}));
+  const boxes = found.models.map((model, index) => {
+    const tick = Object.assign(document.createElement("input"), {type: "checkbox", checked: index < room, value: model.id});
+    const label = document.createElement("label");
+    label.append(tick, document.createTextNode(" " + model.name));
+    card.append(label);
+    return tick;
+  });
+  if (!found.models.length) card.append(Object.assign(document.createElement("p"), {className: "muted small", textContent: "It has no NAM A2 capture."}));
+  else if (room && found.models.length > room) card.append(Object.assign(document.createElement("p"), {className: "muted small",
+    textContent: `The bank has room for ${room} more of its ${found.models.length} captures: those are ticked.`}));
+  const fetchButton = button("Fetch and add to the models", async () => {
+    const wanted = boxes.filter(tick => tick.checked), take = wanted.slice(0, Math.max(0, MAX - models.length));
+    if (!take.length) return t3kSay(wanted.length ? "The bank is full (10 models): remove one first." : "Tick a capture first.", true);
+    fetchButton.disabled = true;
+    const files = [];
+    let failed = "";
+    try {
+      for (const tick of take) {
+        const answer = await fetch("t3k/file?model=" + encodeURIComponent(tick.value));
+        if (!answer.ok) {
+          failed = (await answer.json()).error || "TONE3000 did not give the file.";
+          if (answer.status === 401) t3kStatus();
+          break;
+        }
+        const file = new File([await answer.blob()], decodeURIComponent(answer.headers.get("X-File-Name")));
+        file.t3kCredit = JSON.parse(decodeURIComponent(answer.headers.get("X-Credit")));
+        files.push(file);
+        Object.assign(tick, {checked: false, disabled: true});   // a retry fetches only what is missing
+      }
+    } catch (error) { failed = "The installer did not answer."; }
+    if (failed) fetchButton.disabled = false;     // the card stays for another try
+    else box.replaceChildren();
+    await add(files);
+    const left = wanted.length - take.length ? `; ${wanted.length - take.length} did not fit into the bank` : "";
+    t3kSay(files.length ? `Fetched ${files.length}` + (failed ? `, then: ${failed}` : `: train them in the list above${left}.`) : failed, !!failed || !!left);
+  }, "primary");
+  card.append(Object.assign(document.createElement("div"), {className: "row"}));
+  card.lastChild.append(fetchButton);
+  box.append(card);
+}
+
+fetch("nam/train/state").then(reply => reply.json()).then(state => { training = state; shape = ""; render(); }).catch(() => {});
+t3kStatus();
+</script>
+</body>
+</html>

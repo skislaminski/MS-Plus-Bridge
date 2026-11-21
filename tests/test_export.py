@@ -13,6 +13,7 @@ import yaml
 
 import bridge
 import config_schema as cs
+import effect_pictures
 import export
 import synth_controls
 from tests.sim import KEYBOARD_PORT, SimulatedCase, learned, mapping
@@ -176,6 +177,23 @@ class Card(ExportCase):
         self.boot("#cloud-config\nruncmd: echo hello\n")
         self.assertIn("is not as Raspberry Pi Imager writes it", self.export("--to", str(self.card)))
         self.assertEqual((self.card / "user-data").read_text(encoding="utf-8"), "#cloud-config\nruncmd: echo hello\n")
+
+    def test_the_pictures_of_the_effects_go_along_and_the_pi_reads_them(self):
+        self.complete()
+        self.boot()
+        backup = bridge.INSTALLER_DATA / "Backups" / "ms-60bp_1" / "files"
+        backup.mkdir(parents=True)
+        (backup.parent / "manifest.json").write_text('{"complete": true, "created_ts": 1}', encoding="utf-8")
+        picture = b"ZBMP" + (8).to_bytes(4, "little") + bytes([8, 0, 8, 0, 0, 0, 0, 0]) + bytes(range(8))
+        (backup / "DCOMP.ZIC").write_bytes(picture)
+        program = self.card / export.PROGRAM_FOLDER
+        (program / "pictures").mkdir(parents=True)
+        (program / "pictures" / "GONE.ZIC").write_bytes(picture)            # of an effect no longer there
+        self.assertIn("Written: 1 pictures of effects", self.export("--to", str(self.card)))
+        self.assertEqual(sorted(path.name for path in (program / "pictures").iterdir()), ["DCOMP.ZIC"])
+        self.assertEqual((program / "pictures" / "DCOMP.ZIC").read_bytes(), picture)
+        # the Pi: no installer folder, the card's pictures (ui.PICTURES takes that folder there)
+        self.assertEqual(effect_pictures.Pictures(program / "pictures").picture("DCOMP.ZD2"), effect_pictures.png(picture))
 
     def test_the_program_on_the_card_has_everything_it_imports(self):
         self.complete()

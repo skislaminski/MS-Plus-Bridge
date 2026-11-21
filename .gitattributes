@@ -1,0 +1,2 @@
+# copies that must stay byte-exact: nam2zoom checks the DSP sources and templates by SHA-256
+nam/** -text

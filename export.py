@@ -32,6 +32,7 @@ import yaml
 
 import bridge
 import config_schema as cs
+import effect_pictures
 import effect_names
 import zoom_sysex as zs
 
@@ -41,7 +42,7 @@ BOOT_MARKER = "config.txt"                     # every Raspberry Pi boot partiti
 PROGRAM_FOLDER = "expression-bridge"           # on the boot partition: what the Pi runs
 PROGRAM = ("bridge.py", "zoom_sysex.py", "config_schema.py", "arpeggiator.py", "sequencer.py", "scenes.py",
            "effect_switch.py", "synth_controls.py", "status_led.py", "effect_names.py", "zoom_effects.json",
-           "ui.py", "ui.html", "LICENSE",
+           "ui.py", "ui.html", "effect_pictures.py", "LICENSE",
            "pi/install.sh", "pi/expression-bridge.service", "pi/expression-bridge-setup.service",
            "pi/90-expression-bridge-stick.rules", "pi/bluetooth-midi.sh", "pi/expression-bridge-bluetooth.service")
 CLOUD_CONFIG = "user-data"                     # what cloud-init does at the Pi's first start
@@ -83,6 +84,21 @@ def write_effects(folder: Path) -> Optional[Path]:
     there = dict(there, **mine) if isinstance(there, dict) else mine
     target.write_text(json.dumps(there, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     return target
+
+
+def write_pictures(program: Path) -> int:
+    """The pictures of the effects go along (the Pi has no installer and no backups): every NAME.ZIC
+    this computer's installer has, the newest of each, into pictures/ beside the program. Those
+    that are no longer here are removed. Returns how many there are."""
+    found = effect_pictures.find(bridge.INSTALLER_DATA)
+    folder = program / "pictures"
+    folder.mkdir(exist_ok=True)
+    for old in folder.glob("*"):
+        if old.name.upper() not in found:
+            old.unlink()
+    for name, path in found.items():
+        (folder / name).write_bytes(path.read_bytes())
+    return len(found)
 
 
 def version() -> str:
@@ -173,6 +189,9 @@ def main(argv=None) -> None:
     if (folder / BOOT_MARKER).exists():               # the Pi's boot partition: the program goes along
         program = write_program(folder)
         print(f"Written: {program} ({(program / 'VERSION').read_text(encoding='utf-8').strip()}).")
+        pictures = write_pictures(program)
+        print(f"Written: {pictures} pictures of effects, from the installer's backups on this computer." if pictures
+              else "No pictures of effects: this computer's Zoom MS Installer has no backup yet (the names stand in).")
         planned = plan_installation(folder)
         print({"added": "At its first start the Pi installs the bridge by itself: it needs the internet once "
                         "(WLAN as set in Raspberry Pi Imager, or a cable) and takes a few minutes. "

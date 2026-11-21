@@ -90,7 +90,8 @@ See [Installation](#installation) for all three systems.
   [Changing an effect](#changing-an-effect), drag an effect to another place, see
   [Moving an effect](#moving-an-effect), add an empty place for one, see
   [Adding an effect](#adding-an-effect), or delete one, see [Deleting an effect](#deleting-an-effect)
-- Every knob of the preset's effects as a slider, see [The editor](#the-editor)
+- Every knob of the preset's effects as a dial, and each effect with the pedal's own picture of it,
+  see [The editor](#the-editor) and [Pictures of the effects](#pictures-of-the-effects)
 - Sends only message kinds you have approved, and logs every SysEx message sent and received
 
 ## Before you start
@@ -233,9 +234,9 @@ starts: one granted later with `probe.py approve` takes effect at the next start
 
 | System | Double-click | Or in the terminal |
 |---|---|---|
-| macOS | `Start Bridge.command`, afterwards the app it makes | `.venv/bin/python bridge.py --open` |
-| Windows | `Start Bridge.bat` | `.venv\Scripts\python bridge.py --open` |
-| Linux | `Start Bridge.sh` (in a terminal) | `.venv/bin/python bridge.py --open` |
+| macOS | `Start Bridge.command`, afterwards the app it makes | `.venv/bin/python bridge.py --open --workshop` |
+| Windows | `Start Bridge.bat` | `.venv\Scripts\python bridge.py --open --workshop` |
+| Linux | `Start Bridge.sh` (in a terminal) | `.venv/bin/python bridge.py --open --workshop` |
 
 The interface opens in the browser at `http://127.0.0.1:8765`. If the pedal is missing, the
 bridge waits for it and connects as soon as it appears. The pedal is all it needs: the keyboard,
@@ -255,6 +256,63 @@ move the folder, start once with `Start Bridge.command` again and the app is mad
 Windows, make a shortcut to `Start Bridge.bat` and give it `icon.ico` (Properties → Change
 Icon).
 
+**The workshop's tabs** (`--workshop`, which the start scripts pass; without them:
+`.venv/bin/python bridge.py --open`). The interface has five tabs: **Bridge**, **Installer**, **IR Loader**, **KeyWave** and **NAM**. The installer is the Zoom MS Installer 1.3
+(a copy in `installer/`), with its own window inside the tab: the same engine, the same backups
+and alarm in `~/Zoom MS Installer`, on a listener of its own that only this computer reaches,
+under a secret address that a phone never gets. Before each of its jobs (Connect, Back up,
+Install, Remove, Rescue) the bridge lets go of the pedal ("Pedal released: the installer is
+working …"); it takes the pedal back once the job is over and reads its effects again. A job is
+not started while the bridge is changing something on the pedal ("Not started: …" in the
+installer's Activity). After a transfer the installer could not verify, the bridge stays away
+until the rescue clears the alarm. Stopped with Ctrl+C during a transfer, the program ends once
+the transfer is done. If the bridge itself cannot start (its settings, another pedal's device
+ID, the setup in its terminal cancelled), the installer runs on its own and opens in the browser. A standalone Zoom MS Installer that
+is open when the bridge starts keeps the pedal; then the tabs are missing. **IR Loader** is the IR
+Loader Tool (a copy in `ir_loader_tool.html`): your own cab IRs into the IRLoader effect. Its
+**Send to the installer** puts `IRLOADER.ZD2` + `.ZIC` straight into the installer's list
+(instead of two downloads); install them there, after taking IRLoader out of every patch. Its
+**Browse TONE3000…** fetches cab IRs you pick on TONE3000 (see below) straight into the free slots, or,
+from a slot's own **TONE3000…**, into that slot and the ones after it.
+**KeyWave** is KeyWave Tables 1.2 (a copy in `keywave/`): your own wavetable into the KeyWave
+effect. **Make** writes it where KeyWave Tables always does (`Documents/KeyWave Tables/<name>/`);
+**Send to the installer** then puts that `KEYWAVE.ZD2` + `.ZIC` into the installer's list. Take
+KeyWave out of every patch before installing it: same file name and id.
+**NAM** makes an N2Z Bank of 1–10 Compact NAM models (those nam2zoom.app has converted; others it
+sends back to nam2zoom.app) with nam2zoom 1.2.3's own packaging (a byte-exact copy in `nam/`): its
+precompiled bank, only the models and their names filled in, byte for byte what nam2zoom.app
+builds. `N2ZBANK.ZD2` + `.ZIC` go into the installer's list. After the build it names the saved
+patches that use the N2Z Bank on the pedal, as the newest backup has them (nam2zoom.app refuses
+to replace its bank while any saved patch holds an effect that is not Zoom's own; here the choice
+is yours). When the installer asks for the category, PREAMP keeps the bank as nam2zoom builds
+it; another one makes the installer adapt it, and nam2zoom.app then no longer replaces that bank.
+Any other NAM, a TONE3000 capture for instance, gets **Train**: nam2zoom.app's own trainer
+(`nam_train.py`) makes a Compact model of it, about 7½ minutes per model on an M1 with its GPU, one
+after the other, with its progress in the row and **Cancel** (which stops the whole trainer). A
+model that passes nam2zoom's check is kept where nam2zoom.app keeps its own
+(`Converted_NAM/Compact`) and goes into the list; one that does not pass it outright can be
+listened to (the capture as it is, and trained for the pedal) and kept or dropped. The trainer
+needs nam2zoom.app with its training set up there once (PyTorch, about 1 GB); the bridge calls
+the app's own Python and changes nothing of it. Close nam2zoom.app while training here: both use
+the same cache.
+
+**TONE3000** ([tone3000.com](https://www.tone3000.com), "Powered by TONE3000"): **Browse TONE3000…**
+in the NAM tab (beside **Choose…** and in its TONE3000 section) and in the IR Loader tab opens
+TONE3000's own window; before the first sign-in a short note says what TONE3000 is (as its design
+requirements ask). You sign in there with your email address and a 6-digit code and pick a tone;
+the tab shows it (picture, gear, format, creator, license) with what still fits ticked (a bank
+holds 10, the IR Loader 8 slots), and fetches what you keep ticked: A2 captures to train, cab IRs
+for the slots. Nobody needs a key of their own: the bridge has its publishable key built in
+(`tone3000.KEY`, public by design; a secret key is never used). It signs in with OAuth 2 and PKCE
+through the workshop's own address on this computer (`/t3k/callback`); a sign-in has an hour to
+finish, and it is kept in `~/Zoom MS Installer/tone3000.json` (readable by you only) until
+**Sign out of TONE3000**. Only what you pick is fetched. A model row and an IR slot show where they
+came from, a trained model keeps its creator and license beside it (`<name>.tone3000.json`), and a
+tone whose license allows no changes (CC BY-ND) is neither trained nor fitted. On a Python without
+certificates of its own (python.org's on macOS before its "Install Certificates.command") the bridge
+checks TONE3000's with those of macOS. Its API is still marked beta. The installer needs one more package, `construct`
+(in `requirements.txt`: the start scripts add it to an environment made before).
+
 Started again while it runs (the app double-clicked once more), it opens the running bridge's
 interface in the browser instead of starting a second one. Stop the bridge with **Ctrl+C** in its window: it then switches the pedal's edit mode off and
 closes the MIDI ports. Closing the window on Windows ends it without that step, which had no
@@ -262,10 +320,15 @@ lasting effect in testing on macOS.
 
 ## Using the interface
 
-The interface is a column of parts that fold: a click on a title opens or closes it, and its line
-shows the state while it is closed. Which parts are open is remembered in the browser. From the
-top: Devices, Preset, Arpeggiator and Step sequencer (those two only when a keyboard synth is set
-up, see [Keyboard synth](#keyboard-synth)), and Activity. Where a controller can be learned, it
+The interface has tabs: **Presets** and **Bridge**, everywhere (also on a phone or the Pi); on the
+computer the bridge runs on with `--workshop`, the tools too, in this order: Presets, NAM, IR
+Loader, Bridge, KeyWave, Installer. Every tab has the same width and the bridge's colours, and the
+tab shown last is shown again. **Presets** holds the preset on the pedal (below) and **All
+presets**: the pedal's 100 presets as cards, each with its number, name and the pictures of its
+effects; a click on one chooses it. **Bridge** holds Devices, Arpeggiator and Step sequencer (those
+two only when a keyboard synth is set up, see [Keyboard synth](#keyboard-synth)), and Activity.
+Each tab is a column of parts that fold: a click on a title opens or closes it, and its line
+shows the state while it is closed. Which parts are open is remembered in the browser. Where a controller can be learned, it
 says "Learn" or, once it has one, its number ("CC 22", "Exp") with an × to take it away.
 
 **Preset** is everything about the preset that is selected on the pedal: its number and name
@@ -950,9 +1013,10 @@ and reads the patch afterwards: the interface and Activity say whether the pedal
 
 - **Only effects the pedal has:** those in its own list of its files, and those it reported in a
   preset (kept in `measurements.json`; on 2026-10-20 all 123 effect files on this pedal, and BPM).
-  The bridge reads the list whenever the installer asks the pedal for it while the bridge runs
-  (`60 04 25 …`, the answers pass by on the same port), and takes an effect file it names as one
-  the pedal has, once it is in `zoom_effects.json`. Nothing is taken off: the installer lists the
+  The bridge reads the list whenever another program asks the pedal for it while the bridge is
+  connected (`60 04 25 …`, the answers pass by on the same port), and takes an effect file it names
+  as one the pedal has, once it is in `zoom_effects.json`. The Zoom MS Installer gets the pedal to
+  itself (see [Safety](#safety)); once it is closed the bridge reads the pedal's list again. Nothing is taken off: the installer lists the
   files after deleting what it replaces and before writing it again, so a list does not show what
   is gone for good. An effect deleted from the pedal stays in the choice; choosing it, the bridge
   reads back that the pedal did not take it.
@@ -987,15 +1051,19 @@ PH+Dist back. Not tried yet: a custom effect, and a place other than the first.
    .venv/bin/python probe.py approve change_effect query_patch
    ```
 
-2. Click the name of the effect to replace and choose the new one. Escape or a click elsewhere
-   leaves it as it is.
+2. Click the picture or name of the effect to replace: the effects the pedal has open as their
+   pictures, by group, each with the DSP it takes (one that does not fit beside the others is
+   greyed out). Click the new one; Escape, × or a click beside the box leaves it as it is.
 
 ## The editor
 
-The arrow (▸) beside an effect's name under "Preset" → "Effects" opens all its knobs as sliders
+The arrow (▸) beside an effect's name under "Preset" → "Effects" opens all its knobs as dials
 under it, named as the pedal names them, each with what it holds now. The lamp beside the name
-switches the effect: green on, red off. Moving a slider sets the knob on the
-pedal, like turning it there; a knob turned on the pedal moves its slider.
+switches the effect: green on, red off. Turning a dial sets the knob on the pedal, like turning it
+there; a knob turned on the pedal turns its dial. A dial turns up when dragged up or to the right
+(with Shift slower); with the keyboard the arrow keys turn it one step, Page Up/Down a tenth, Home
+and End to its ends. A knob linked to the expression pedal or a controller keeps its line with
+heel and toe (see [Using the interface](#using-the-interface)).
 
 - **What it holds** is read from the preset (each effect's 24 bytes of settings, see
   `EDTB_WIDTHS` in `zoom_sysex.py`: 151 knobs turned on the MS-60B+ read back the same), then
@@ -1012,6 +1080,18 @@ pedal, like turning it there; a knob turned on the pedal moves its slider.
 - Values go out with the same pace as those of the assignments, after them; while the slider is
   held, only the latest one waits. Like a knob: **save the preset on the pedal** to keep them.
 - Uses the "set parameter" message only, which the bridge needs anyway: no approval of its own.
+
+## Pictures of the effects
+
+Every effect file on the pedal comes with a picture of the effect (its .ZIC file, Zoom's "ZBMP":
+the pedal's display shows it, white on black, 102 × 128 pixels). The interface shows it in the
+chain, when choosing an effect, on the cards of All presets and in the installer's lists. The
+bridge takes it from the Zoom MS Installer's backups on this computer (`~/Zoom MS Installer`): the
+newest complete backup first, then older ones, then `Adapted/` (`effect_pictures.py`;
+`GET /api/picture?id=<8 hex digits>`, cached by the browser for an hour). The Pi has no installer:
+writing its card (`Write Pi Card.command`, `export.py`) takes the pictures along, the newest of each
+effect, into `expression-bridge/pictures/`. An effect without a picture shows its name instead: one
+not in any backup yet (make one in the Installer tab, then write the Pi's card again).
 
 ## Adding an effect
 
@@ -1129,7 +1209,9 @@ in `profiles/NAME/`, apart from those of the first. **This has not been tried wi
 
 2. In that `config.yaml`, give the second bridge a port of its own for the interface under
    `ui:`, for example `8766`. Two bridges cannot share one.
-3. Start it next to the first one. Its interface names the profile in its title.
+3. Start it next to the first one. Its interface names the profile in its title. Start the first
+   one without the workshop's tabs (`.venv/bin/python bridge.py --open`): while a bridge has the
+   installer in a tab, any other bridge leaves its pedal alone ("the Zoom MS Installer is open").
 
    ```bash
    .venv/bin/python bridge.py --profile second --open
@@ -1270,6 +1352,9 @@ over USB, and a little jitter. **Not tried yet on the Pi.**
 
 ### What is different on the Pi
 
+- **The pictures of the effects** come from its card: written there with the program, from the
+  installer's backups on the computer (see [Pictures of the effects](#pictures-of-the-effects)).
+  A USB stick carries the settings only, no pictures.
 - **The log** goes to the system's journal; with SSH: `journalctl -u expression-bridge -f`. The
   interface on the Pi shows the most recent lines under "Activity".
 - **Port names.** Linux names a MIDI port "client:port number:number", for example
@@ -1326,6 +1411,17 @@ the external sequencer's port name on Linux, and pulling the plug while it runs.
 - **A synth effect's Key knobs are notes.** Only the note logic writes them: no assignment of a
   controller, scene or editor value reaches the Key knobs of any synth effect in the chain,
   played or not.
+- **Another program gets the pedal alone.** While the Zoom MS Installer is open (its
+  `running.json` in `~/Zoom MS Installer` names an address on this computer that answers), and
+  while its alarm file `unresolved.json` is there (it is writing to the pedal, or a transfer could
+  not be verified – until its rescue clears it), the bridge lets go of the pedal: it waits for a
+  change already on its way, releases held notes, switches edit mode off, closes the ports and
+  sends nothing until then ("Pedal released: …" in Activity and the header). For other programs
+  (nam2zoom, an editor) **Release pedal** in the header does the same until **Take pedal back** –
+  only on the computer itself, not from a phone. Once the pedal is back its effects are read again
+  as at the start (when the preset on it is as stored). Programs that do not say they are working,
+  such as Handy Guitar Lab or a browser tab with a pedal editor, the bridge cannot see: release
+  the pedal by hand for them.
 - **A refusal of the allowlist never stops the bridge.** It is logged ("WARNING: not sent") and
   the message is dropped.
 - **Parameters that were not learned** are sent with the range you enter. Until the pedal has
@@ -1490,14 +1586,22 @@ hardware as well.
 | `Write Pi Card.command` | macOS: writes the bridge and its settings onto the Pi's SD card (`export.py`) |
 | `probe.py` | Setup and exploration: ports, identity, CC measurement, learn, verify, approvals |
 | `config.example.yaml` | Template for `config.yaml` |
+| `nam_train.py` | `--workshop`: training NAM models into Compact ones with nam2zoom.app's own trainer (its Python, its PyTorch environment, its cache) |
+| `effect_pictures.py` | The effects' pictures for the interface: the pedal's .ZIC files from the installer's backups as PNG |
+| `tab_theme.css` | `--workshop`: the bridge's colours and width for the four tool tabs, put into their pages as they are served |
+| `tone3000.py` | `--workshop`: TONE3000 – sign-in (OAuth 2 + PKCE with the built-in publishable key), the tone picked, its files; on a Python without certificates of its own (python.org's on macOS) those of macOS |
+| `nam_bank.py`, `nam_bank.html`, `nam/` | `--workshop`: the NAM tab, an N2Z Bank from Compact NAM models with nam2zoom 1.2.3's packaging (a byte-exact copy, MIT, `nam/LICENSE`; `.gitattributes` keeps its line endings) |
+| `keywave/` | `--workshop`: the KeyWave tab, a copy of KeyWave Tables 1.2 laid out as its Windows package (`base/`, `examples/`); its page with the button that hands an effect to the installer |
+| `workshop.py`, `installer/`, `ir_loader_tool.html` | `--workshop`: the Zoom MS Installer 1.3 (an unchanged copy, MIT, see `installer/NOTICE.md`) as a tab, with the pedal lent to it for each job, and the IR Loader Tool beside it; not on the Pi |
 | `tests/` | Tests against simulated devices (`sim.py` is the simulated pedal and controller) |
-| `Start Bridge.command` | macOS launcher: sets up the environment if needed, makes the clickable app and starts the bridge |
+| `Start Bridge.command` | macOS launcher: sets up the environment if needed, makes the clickable app and starts the bridge with the workshop's tabs |
 | `Start Bridge.bat` | The same for Windows, without the app (untested) |
 | `Start Bridge.sh` | The same for Linux (untested) |
 | `icon.png`, `icon.ico` | The icon of the app, and the same for a Windows shortcut |
 | `tools/value_labels/` | Maintenance: the texts of Zoom's own effects' values, read from their code into `zoom_effects.json` |
 | `QUICKSTART.md` | The short way to a running bridge |
 | `docs/ms-plus-bridge.png` | The picture at the top (also for GitHub's social preview, 1280 × 640) |
+| `docs/tone3000-logo.svg` | TONE3000's official logo, unaltered (from tone3000.com/api, "Download TONE3000 Logos"), for the README; the NAM and IR Loader tabs carry it and the T3K mark inline |
 
 Created locally and not part of the repository: `config.yaml`, `approvals.json`,
 `measurements.json`, `controls.json`, `pedal_effects.json`, `logs/sysex.log`, `MS Plus Bridge.app`, and the same
@@ -1513,6 +1617,12 @@ files once more per profile in `profiles/`.
   by Leemuzhko, a synth effect for the older Zoom MS pedals and the model for KeySynth's set of
   features (the idea only; none of its code is used)
 - [mido](https://github.com/mido/mido) and [python-rtmidi](https://github.com/SpotlightKid/python-rtmidi)
+- [TONE3000](https://www.tone3000.com): its public API for picking captures and cab IRs ("Powered by TONE3000")
+- `nam/`: the packaging of [nam2zoom](https://github.com/freelender/nam-to-zoom) 1.2.3 by Aleksandar
+  Vukasinovic, MIT (`nam/LICENSE`)
+- `installer/`: the Zoom MS Installer, built on [zoom-zt2](https://github.com/mungewell/zoom-zt2) by
+  Simon Wood (mungewell) and the transfer safety of stomphacks by Thomas Hammer (thammer), both
+  MIT; its own notices in `installer/NOTICE.md` and `installer/LICENSE`
 
 ## License
 
