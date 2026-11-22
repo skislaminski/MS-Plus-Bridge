@@ -206,6 +206,30 @@ class InTheTable(unittest.TestCase):
                                     "size": 5}])
             self.assertEqual(effect_names.labels(N2Z), {})                           # read at every Read Pedal: as read
 
+    def test_an_effect_of_another_pedal_read_gets_its_texts_by_file_and_knobs(self):
+        # DELAY_I.ZD2 of the MS-80IR+, installed on this pedal: the table has no entry for its file,
+        # zoom_effects_other.json has its texts (only its code makes them)
+        knobs = [["Time", 2], ["Mode", 2]]
+        others = {"DELAY_I.ZD2": [{"knobs": [["Time", 9]], "labels": {"2": ["x"] * 10}},
+                                  {"knobs": knobs, "labels": {"3": ["SHORT", "LONG", "BPM SYNC"], "2": ["a"]}}]}
+        with mock.patch.object(effect_names, "_others", others):
+            effect_names.remember([{"id": 0x09000012, "name": "Delay", "knobs": knobs, "file": "DELAY_I.ZD2", "size": 9}])
+            self.assertEqual(effect_names.labels(0x09000012), {3: ["SHORT", "LONG", "BPM SYNC"]})   # what fits
+            effect_names.remember([{"id": 0x09000012, "name": "Delay", "knobs": knobs[:1], "file": "DELAY_I.ZD2",
+                                    "size": 8}])
+            self.assertEqual(effect_names.labels(0x09000012), {})                    # other knobs: none
+            effect_names.remember([{"id": 0x09000022, "name": "X", "knobs": knobs, "file": "OTHER.ZD2", "size": 9}])
+            self.assertEqual(effect_names.labels(0x09000022), {})                    # another file: none
+
+    def test_the_texts_of_other_pedals_effects_fit_their_knobs(self):
+        others = json.loads(effect_names.OTHERS.read_text(encoding="utf-8"))
+        files = {entry["file"] for entry in json.loads(effect_names.TABLE.read_text(encoding="utf-8")).values()}
+        self.assertIn("DELAY_I.ZD2", others)
+        for name, builds in others.items():
+            self.assertNotIn(name, files)                                            # the installer refuses those
+            for build in builds:
+                self.assertEqual(effect_names._fitting_labels(build["labels"], build["knobs"]), build["labels"], name)
+
     def test_texts_in_the_cache_that_do_not_fit_its_knobs_are_left_out(self):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)

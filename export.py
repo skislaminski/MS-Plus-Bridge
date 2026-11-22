@@ -42,7 +42,7 @@ BOOT_MARKER = "config.txt"                     # every Raspberry Pi boot partiti
 PROGRAM_FOLDER = "expression-bridge"           # on the boot partition: what the Pi runs
 PROGRAM = ("bridge.py", "zoom_sysex.py", "config_schema.py", "arpeggiator.py", "sequencer.py", "scenes.py",
            "effect_switch.py", "synth_controls.py", "status_led.py", "effect_names.py", "zoom_effects.json",
-           "ui.py", "ui.html", "effect_pictures.py", "LICENSE",
+           "zoom_effects_other.json", "ui.py", "ui.html", "effect_pictures.py", "LICENSE",
            "pi/install.sh", "pi/expression-bridge.service", "pi/expression-bridge-setup.service",
            "pi/90-expression-bridge-stick.rules", "pi/bluetooth-midi.sh", "pi/expression-bridge-bluetooth.service")
 CLOUD_CONFIG = "user-data"                     # what cloud-init does at the Pi's first start

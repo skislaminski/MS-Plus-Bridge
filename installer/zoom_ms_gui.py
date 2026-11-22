@@ -302,7 +302,8 @@ class App(object):
             m.keep_awake(False)
         # a backup only reads: its code 4 is an alarm only if the engine
         # found the list in doubt (not e.g. a full disk on the computer)
-        if code == 4 and (name in ("install", "remove", "rescue", "restore")
+        if code == 4 and (name in ("install", "remove", "rescue", "restore",
+                                   "remove_stock", "restore_stock")
                           or name == "backup"
                           and self.headline.startswith("UNRESOLVED")):
             self._set_unresolved(True, self.job_model)
@@ -423,6 +424,19 @@ class App(object):
                   "label": table.get(e[0], {}).get("label",
                                                    "group %d" % e[0])}
                  for e in entries if stock and e[1].upper() not in stock]
+        listed = set(e[1].upper() for e in entries)
+
+        def label(group):
+            return table.get(group, {}).get("label", "group %d" % group)
+        stock_on = [{"file": e[1], "version": e[2], "id": "0x%08x" % e[3],
+                     "label": label(e[0])} for e in entries
+                    if e[1].upper() in stock
+                    and e[1].upper() not in m.KEEP_STOCK]
+        stock_missing = [{"file": n, "id": "0x%08x" % eid,
+                          "label": label(eid >> 24)}
+                         for n, eid in sorted(stock.items())
+                         if eid >= 0 and n not in listed
+                         and n not in m.KEEP_STOCK]
         with self.lock:
             self.pedal = {
                 "name": st["ident"]["name"],
@@ -433,6 +447,7 @@ class App(object):
                 "storage_free": st["storage_free"],
                 "storage_max": st["storage_max"],
                 "added": added, "read_at": time.strftime("%H:%M:%S"),
+                "stock_on": stock_on, "stock_missing": stock_missing,
             }
         self._refresh_backup()
         m.say("%d effects on the pedal, %d of them added. %.1f of %.1f MB "
@@ -482,13 +497,25 @@ class App(object):
         code = self._engine(m.cmd_install, self.opts(files=files))
         return self._read_again_after(code)
 
-    def job_remove(self, names):
-        """Remove the effects ticked in the window, all in one job."""
+    def job_remove(self, names, stock=False):
+        """Remove the effects ticked in the window, all in one job (stock:
+        stock effects, which restore_stock brings back)."""
         if not names:
             m.say("REFUSED (nothing was changed on the pedal): no effect was "
                   "selected")
             return 2
-        code = self._engine(m.cmd_uninstall, self.opts(files=list(names)))
+        code = self._engine(m.cmd_uninstall,
+                            self.opts(files=list(names), stock=stock))
+        return self._read_again_after(code)
+
+    def job_restore_stock(self, names):
+        """Bring back the stock effects ticked in the window."""
+        if not names:
+            m.say("REFUSED (nothing was changed on the pedal): no effect was "
+                  "selected")
+            return 2
+        code = self._engine(m.cmd_restore_stock,
+                            self.opts(files=list(names), source=[]))
         return self._read_again_after(code)
 
     def _read_again_after(self, code):
@@ -805,6 +832,12 @@ def make_handler(app, token, page):
                 "api/job/install": ("install", app.job_install),
                 "api/job/remove": (
                     "remove", lambda: app.job_remove(effect_names(data))),
+                "api/job/remove_stock": (
+                    "remove_stock",
+                    lambda: app.job_remove(effect_names(data), stock=True)),
+                "api/job/restore_stock": (
+                    "restore_stock",
+                    lambda: app.job_restore_stock(effect_names(data))),
                 "api/job/rescue": ("rescue", app.job_rescue),
                 "api/job/restore": (
                     "restore", lambda: app.job_rescue(restore=True)),

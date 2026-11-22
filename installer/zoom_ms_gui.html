@@ -148,6 +148,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 0 4px; }
         <button id="btnOpenBackups">Open backup folder</button>
       </div>
       <div id="addedWrap"></div>
+      <div id="stockWrap"></div>
     </div>
   </section>
 
@@ -383,7 +384,80 @@ function removeEffects(names) {
   }
 }
 
+// Stock effects: removed to make room, brought back from a backup.
+const stockPicked = new Set(), backPicked = new Set();
+let stockSig = "", stockOpen = false;
+
+function removeStock(names) {
+  confirmLocal(names.length === 1 ? "Remove the stock effect " + names[0] + "?" : "Remove " + names.length + " stock effects?",
+    "A factory reset does NOT bring stock effects back. “Bring back” does, from a backup of this pedal: removing needs one that holds the effect, and you are asked about a new backup first. Saved patches that use them lose them.",
+    "Continue", () => post("job/remove_stock", {files: names}), true, names.length > 1 ? names : undefined);
+}
+
+function restoreStock(names) {
+  post("job/restore_stock", {files: names});
+}
+
+function stockTable(rows, ticked, busy, head, action, cls, go) {
+  const part = el("div");
+  part.style.marginTop = "10px";
+  const names = rows.map(r => r.file);
+  const btn = el("button", cls);
+  const ticks = tickBoxes(ticked, names, busy, () => {
+    btn.textContent = action + " selected" + (ticked.size ? " (" + ticked.size + ")" : "") + "…";
+    btn.disabled = busy || !ticked.size;
+  });
+  const t = el("table");
+  const hr = el("tr");
+  ticks.header(hr);
+  [head, "Category", "ID", ""].forEach(h => hr.appendChild(el("th", null, h)));
+  t.appendChild(hr);
+  for (const r of rows) {
+    const tr = el("tr");
+    ticks.row(tr, r.file);
+    tr.appendChild(el("td", "mono", r.file));
+    tr.appendChild(el("td", null, r.label));
+    tr.appendChild(el("td", "mono", r.id));
+    const td = el("td", "num");
+    const b = el("button", cls, action);
+    b.disabled = busy;
+    b.onclick = () => go([r.file]);
+    td.appendChild(b);
+    tr.appendChild(td);
+    t.appendChild(tr);
+  }
+  part.appendChild(t);
+  const row = el("div", "row");
+  row.style.marginTop = "8px";
+  row.appendChild(el("span", "grow"));
+  btn.onclick = () => go(names.filter(n => ticked.has(n)));
+  row.appendChild(btn);
+  part.appendChild(row);
+  ticks.sync();
+  return part;
+}
+
+function renderStock(p, busy) {
+  const sig = p ? JSON.stringify([p.known, p.stock_on, p.stock_missing, busy]) : "";
+  if (sig === stockSig) return;
+  stockSig = sig;
+  const wrap = $("stockWrap");
+  wrap.replaceChildren();
+  if (!p || !p.known || !p.stock_on) return;
+  const box = el("details");
+  box.style.marginTop = "14px";
+  box.open = stockOpen;
+  box.ontoggle = () => { stockOpen = box.open; };
+  box.appendChild(el("summary", null, "Stock effects (" + p.stock_on.length + " on the pedal"
+    + (p.stock_missing.length ? ", " + p.stock_missing.length + " not" : "") + ")"));
+  box.appendChild(el("div", "banner warn", "Stock effects can be removed to make room. A factory reset does NOT bring them back: “Bring back” writes Zoom's original file back, from a backup of this pedal. The last effect of a category stays."));
+  if (p.stock_on.length) box.appendChild(stockTable(p.stock_on, stockPicked, busy, "Stock effect", "Remove", "danger", removeStock));
+  if (p.stock_missing.length) box.appendChild(stockTable(p.stock_missing, backPicked, busy, "Not on the pedal", "Bring back", null, restoreStock));
+  wrap.appendChild(box);
+}
+
 function renderPedal(p, busy) {
+  renderStock(p, busy);
   $("pedalEmpty").style.display = p ? "none" : "block";
   $("pedalBody").style.display = p ? "block" : "none";
   $("btnConnect").textContent = p ? "Read again" : "Connect";

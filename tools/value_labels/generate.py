@@ -122,6 +122,61 @@ def update(table: dict, folders, dis6x: str, say=print) -> dict:
     return done
 
 
+def others(table: dict, folders, dis6x: str, say=print) -> Tuple[Dict[str, list], dict]:
+    """The texts of Zoom's effects of the other MS Plus pedals (50G+, 70CDR+, 80IR+, 200D+) whose
+    file is not one of the table's (the installer refuses those): file name → [{knobs, labels}],
+    one per build of that name with texts. Two builds with the same knobs and other texts give
+    none (which one is on the pedal is not known). Returns them and what was done (as update)."""
+    taken = {str(entry.get("file", "")).upper() for entry in table.values()}
+    done = {"effects": 0, "labelled": 0, "knobs": 0, "failed": [], "skipped": []}
+    found: Dict[str, list] = {}
+    for name, paths in sorted(effect_files(folders).items()):
+        if name in taken:
+            continue
+        for path in paths:
+            effect = f"{name} ({path.parent.name})"
+            data = path.read_bytes()
+            read = effect_names.read_zd2(data)
+            try:
+                knobs, texts, failed = value_texts(data, dis6x)
+            except (ValueError, RuntimeError, OSError) as error:
+                done["skipped"].append((effect, str(error)))
+                continue
+            if read is None or knobs != read["knobs"]:      # the bridge finds them by the knobs read_zd2 reads
+                done["skipped"].append((effect, "the ELF's parameter table has other knobs than read_zd2 reads"))
+                continue
+            done["effects"] += 1
+            for param, reason in sorted(failed.items()):
+                done["failed"].append((effect, knobs[param - effect_names.FIRST_KNOB][0], reason))
+            labels = labels_of(texts)
+            if labels:
+                found.setdefault(name, []).append({"knobs": knobs, "labels": labels})
+    out = {}
+    for name, builds in found.items():
+        kept = []
+        for build in builds:
+            same = [other for other in builds if other["knobs"] == build["knobs"]]
+            if any(other["labels"] != build["labels"] for other in same):
+                say(f"warning: {name}: builds with the same knobs show other texts, left out")
+            elif build not in kept:
+                kept.append(build)
+        if kept:
+            out[name] = kept
+            done["labelled"] += len(kept)
+            done["knobs"] += sum(len(build["labels"]) for build in kept)
+    return out, done
+
+
+def write_others(made: Dict[str, list], path: Path) -> None:
+    """As others makes them, one build on a line."""
+    lines = ["{"]
+    for number, (name, builds) in enumerate(made.items()):
+        lines.append(f" {json.dumps(name)}: [\n" + ",\n".join(
+            "  " + json.dumps(build, ensure_ascii=False) for build in builds) + "]" + ("," if number < len(made) - 1 else ""))
+    lines.append("}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m tools.value_labels",
                                      description="Sets the value texts of zoom_effects.json from the effect files (.ZD2).")
@@ -131,6 +186,9 @@ def main(argv=None) -> int:
     parser.add_argument("--table", metavar="PATH", default=str(effect_names.TABLE),
                         help="the table to update (default: zoom_effects.json of the bridge)")
     parser.add_argument("--dry-run", action="store_true", help="only say what would be set")
+    parser.add_argument("--others", action="store_true",
+                        help="the effects of other pedals in the folders instead, whose file the table has not: "
+                             f"into {effect_names.OTHERS.name} beside the table")
     args = parser.parse_args(argv)
     dis6x = listing.dis6x_path(args.dis6x)
     if dis6x is None:
@@ -139,6 +197,17 @@ def main(argv=None) -> int:
         return 1
     path = Path(args.table)
     table = json.loads(path.read_text(encoding="utf-8"))
+    if args.others:
+        made, done = others(table, args.folders, dis6x)
+        target = path.with_name(effect_names.OTHERS.name)
+        print(f"{done['effects']} effect files of other pedals read, {len(done['skipped'])} skipped; {done['knobs']} "
+              f"knobs of {done['labelled']} builds show text ({len(made)} files), {len(done['failed'])} knobs failed.")
+        if args.dry_run:
+            print("Nothing written (--dry-run).")
+        else:
+            write_others(made, target)
+            print(f"Written: {target}")
+        return 0
     done = update(table, args.folders, dis6x)
     print(f"{done['effects']} of {len(table)} effects read from their files ({done['other_builds']} of another "
           f"build than the table's), {done['missing']} not found (they keep their texts), {len(done['skipped'])} skipped; "

@@ -13,6 +13,7 @@ pedal.
 
 import argparse
 import collections
+import hashlib
 import os
 import shutil
 import struct
@@ -721,6 +722,8 @@ def run_tests():
               and mock.fs == three_on and not mock.wrote)
         sys.stdin = open(os.devnull)
 
+        stock_checks(tmp, fx)
+
         # The pedal goes silent / loses one reply at EVERY point of removing
         # two effects: never a false "success"; a "safe abort" always means a
         # valid list - the old one, or the new one without both effects.
@@ -899,6 +902,88 @@ def run_tests():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def stock_checks(tmp, fx):
+    """Stock effects removed with --stock and brought back (restore-stock)."""
+    print("5d. Stock effects: removed with a way back")
+    base_fs = stock_fs()
+
+    def listed(mock):
+        return sorted(e for e in m.flst_entries(mock.fs[m.FLST_NAME]))
+
+    mock = fresh(tmp)
+    check("without --stock a stock effect is still refused",
+          quiet(m.cmd_uninstall, opts(file="ST9_1.ZD2"), mock) == 2
+          and mock.fs == base_fs)
+    check("--stock with no backup at all -> refused, nothing written",
+          quiet(m.cmd_uninstall, opts(file="ST9_1.ZD2", stock=True,
+                                      yes=False), mock) == 2
+          and mock.fs == base_fs)
+    check("--stock never empties a category",
+          quiet(m.cmd_uninstall, opts(files=["ST10_1.ZD2", "ST10_2.ZD2"],
+                                      stock=True), mock) == 2
+          and mock.fs == base_fs)
+    quiet(m.cmd_install, opts(files=[fx]), mock)
+    with_fx = collections.OrderedDict(mock.fs)
+    check("--stock does not remove an added effect",
+          quiet(m.cmd_uninstall, opts(file="MYFX.ZD2", stock=True), mock) == 2
+          and mock.fs == with_fx)
+    mock = fresh(tmp)
+    check("--stock removes a stock effect after a backup",
+          quiet(m.cmd_uninstall, opts(file="ST9_1.ZD2", stock=True),
+                mock) == 0
+          and "ST9_1.ZD2" not in mock.fs and "ST9_1.ZIC" not in mock.fs
+          and "ST9_1.ZD2" not in [e[1] for e in listed(mock)]
+          and m.flst_validate(mock.fs[m.FLST_NAME])[0]
+          and len(m.backups_of()) == 1)
+    print("5e. Stock effects brought back")
+    check("an effect that is on the pedal is not brought back",
+          quiet(m.cmd_restore_stock, opts(files=["ST9_2.ZD2"]), mock) == 2)
+    check("a name that is no stock effect is refused",
+          quiet(m.cmd_restore_stock, opts(files=["MYFX.ZD2"]), mock) == 2)
+    check("restore-stock brings it back from the backup",
+          quiet(m.cmd_restore_stock, opts(files=["st9_1.zd2"]), mock) == 0
+          and all(mock.fs.get(n) == base_fs[n]
+                  for n in ("ST9_1.ZD2", "ST9_1.ZIC"))
+          and listed(mock) == sorted(m.flst_entries(base_fs[m.FLST_NAME]))
+          and m.flst_validate(mock.fs[m.FLST_NAME])[0]
+          and not mock.session_open)
+    check("  at the end of its category", [
+        e[1] for e in m.flst_entries(mock.fs[m.FLST_NAME]) if e[0] == 9]
+        == ["ST9_2.ZD2", "ST9_1.ZD2"])
+
+    # no backup holds it: only Zoom's file with the MD5 of effects_sort.txt
+    mock = fresh(tmp)
+    quiet(m.cmd_uninstall, opts(file="ST9_1.ZD2", stock=True), mock)
+    shutil.rmtree(m.BACKUP_ROOT)
+    source = os.path.join(tmp, "zoom-files", "ST9_1")
+    os.makedirs(source)
+    with open(os.path.join(source, "ST9_1.ZD2"), "wb") as f:
+        f.write(base_fs["ST9_1.ZD2"])
+    gone = collections.OrderedDict(mock.fs)
+    folder = os.path.dirname(source)
+    check("no backup and no folder -> refused",
+          quiet(m.cmd_restore_stock, opts(files=["ST9_1.ZD2"], source=[]),
+                mock) == 2 and mock.fs == gone)
+    check("a file in the folder whose MD5 is not Zoom's -> refused",
+          quiet(m.cmd_restore_stock, opts(files=["ST9_1.ZD2"],
+                                          source=[folder]), mock) == 2
+          and mock.fs == gone)
+    real_hashes = m.stock_hashes
+    m.stock_hashes = lambda f: {"ST9_1.ZD2": hashlib.md5(
+        base_fs["ST9_1.ZD2"]).hexdigest()}
+    try:
+        check("Zoom's file from the folder (its MD5), with a blank icon",
+              quiet(m.cmd_restore_stock, opts(files=["ST9_1.ZD2"],
+                                              source=[folder]), mock) == 0
+              and mock.fs.get("ST9_1.ZD2") == base_fs["ST9_1.ZD2"]
+              and mock.fs.get("ST9_1.ZIC") == m.blank_icon())
+    finally:
+        m.stock_hashes = real_hashes
+    check("the MD5 of the shipped list is read",
+          m.stock_hashes("ms-60bp").get("DCOMP.ZD2")
+          == "b12cfead3590cb610187632e4645669f")
+
+
 def capture(func):
     """Run func() with the program's messages collected. -> (result, lines)"""
     lines = []
@@ -1010,6 +1095,11 @@ def review_checks(tmp, fx):
           "units is refused before anything is deleted",
           quiet_silent(m.cmd_install, opts(files=batch), mock) == 2
           and dict(mock.fs) == before and not mock.wrote, mock.wrote)
+
+    check("every MS Plus model with a stock list is known by its number",
+          all(len(m.stock_catalog(m.MODELS[n][1])) > 30
+              for n in (0x23, 0x26, 0x27, 0x28))
+          and m.MODELS[0x25] == ("MS-200D+", None))
 
     # unknown model: nothing on the pedal is replaced without --force
     mock = fresh(tmp, model=0x30)
@@ -1567,6 +1657,22 @@ def gui_checks(tmp, fx, fx2):
         check("a stock effect cannot be removed through it either",
               run(app, "remove", lambda: app.job_remove(["DCOMP.ZD2"])) == 2
               and "DCOMP.ZD2" in mock.fs)
+        check("  the pedal view lists its stock effects, none missing of "
+              "the made-up ones",
+              "ST9_1.ZD2" in [e["file"] for e in app.pedal["stock_on"]]
+              and "ST9_1.ZD2" not in [e["file"]
+                                      for e in app.pedal["stock_missing"]])
+        check("a stock effect removed through it (after a backup)",
+              run(app, "remove_stock",
+                  lambda: app.job_remove(["ST9_1.ZD2"], stock=True)) == 0
+              and "ST9_1.ZD2" not in mock.fs
+              and "ST9_1.ZD2" in [e["file"]
+                                  for e in app.pedal["stock_missing"]])
+        check("  and brought back through it",
+              run(app, "restore_stock",
+                  lambda: app.job_restore_stock(["ST9_1.ZD2"])) == 0
+              and mock.fs.get("ST9_1.ZD2") == stock_fs()["ST9_1.ZD2"]
+              and "ST9_1.ZD2" in [e["file"] for e in app.pedal["stock_on"]])
         check("nothing ticked -> refused",
               run(app, "remove", lambda: app.job_remove([])) == 2)
         # several ticked: one job, one confirmation that lists them

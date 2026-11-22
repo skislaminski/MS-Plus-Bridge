@@ -74,6 +74,11 @@ BUILT_IN = {0xFF0: {"name": "BPM", "knobs": []}}  # in the pedal itself: no effe
 # list of files gives names and sizes only (described).
 READ_SINCE = "2026-10-30"
 
+# The texts of the values of Zoom's effects of the other MS Plus pedals (50G+, 70CDR+, 80IR+, 200D+),
+# which only their code makes (tools/value_labels --others): file name → [{knobs, labels}]. Taken for
+# an effect read from the pedal (Read Pedal) with that file and those knobs, where the table has none.
+OTHERS = TABLE.with_name("zoom_effects_other.json")
+_others: Optional[dict] = None
 _table: Optional[dict] = None
 _by_number: Optional[tuple] = None             # (table, lower 24 bits of an id → the entries that have them)
 # Effect files read from the pedal itself (Read Pedal, read_effect_file): file name → {id (hex),
@@ -312,7 +317,7 @@ def table() -> dict:
                 kept = taken[entry["id"]]
                 conflicts.append(f"{entry['name']} ({file}) is left out: {kept['name']} ({kept['file']}) has its id")
                 continue
-            texts, before = entry.get("labels") or {}, _table[key] if key is not None else {}
+            texts, before = entry.get("labels") or {}, _table[key] if key is not None else _other(file, entry["knobs"])
             if file not in ALWAYS_READ and before.get("knobs") == entry["knobs"] and before.get("labels"):
                 texts = dict(before["labels"], **texts)   # as kept_labels: those the file's code makes
             taken[entry["id"]] = {"name": entry["name"], "knobs": entry["knobs"], "file": file, "size": entry["size"],
@@ -323,6 +328,21 @@ def table() -> dict:
         CONFLICTS[:] = conflicts
         _merged = (_table, _read_version, merged)
     return _merged[2]
+
+
+def _other(file: str, knobs: list) -> dict:
+    """{knobs, labels} of an effect of another pedal with that file and those knobs (OTHERS), else {}."""
+    global _others
+    if _others is None:
+        try:
+            _others = json.loads(OTHERS.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _others = {}
+    builds = _others.get(file) if isinstance(_others, dict) else None
+    for build in builds if isinstance(builds, list) else ():
+        if isinstance(build, dict) and build.get("knobs") == knobs:
+            return {"knobs": knobs, "labels": _fitting_labels(build.get("labels"), knobs)}
+    return {}
 
 
 def _same_build(key: str, entry: dict, size: Optional[int]) -> bool:

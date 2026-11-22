@@ -265,7 +265,15 @@ Install, Remove, Rescue) the bridge lets go of the pedal ("Pedal released: the i
 working …"); it takes the pedal back once the job is over and reads its effects again. A job is
 not started while the bridge is changing something on the pedal ("Not started: …" in the
 installer's Activity). After a transfer the installer could not verify, the bridge stays away
-until the rescue clears the alarm. Stopped with Ctrl+C during a transfer, the program ends once
+until the rescue clears the alarm. **Stock effects** can be removed too, to make room (*Stock
+effects* in the installer's tab, `zoom_ms_installer.py remove --stock`): never the last one of a
+category, and only when a backup of the pedal holds the file as it was read. A factory reset does
+not bring them back; *Bring back* (`restore-stock`) writes Zoom's original file back from that
+backup, unchanged, at the end of its category (or, with `--from FOLDER`, a file of Zoom's whose
+MD5 is the one in `effects_sort.txt`). This works on the MS-50G+, MS-60B+, MS-70CDR+ and MS-80IR+,
+whose lists of stock effects come with the installer (from zoom-zt2); only the MS-60B+ has been
+tried. The MS-200D+ is recognized, but no list of its stock effects is known yet, so the installer
+removes nothing on it. Stopped with Ctrl+C during a transfer, the program ends once
 the transfer is done. If the bridge itself cannot start (its settings, another pedal's device
 ID, the setup in its terminal cancelled), the installer runs on its own and opens in the browser. A standalone Zoom MS Installer that
 is open when the bridge starts keeps the pedal; then the tabs are missing. **IR Loader** is the IR
@@ -462,6 +470,16 @@ on 2026-10-21; a knob whose texts are just its numbers gets none). It needs TI's
 It sets the texts of every effect in the table whose file is in the folders; the others keep
 theirs. Reading the table again with `effect_names.py` keeps the texts of every effect whose file
 and knobs are unchanged, so run the tool after such a reading, with the same folders.
+
+Zoom's effects of the other MS Plus pedals (MS-50G+, MS-70CDR+, MS-80IR+, MS-200D+) can be
+installed on the MS-60B+ too; the bridge learns their names and knobs by Read Pedal. Their texts
+are in `zoom_effects_other.json`, by file name and knobs (422 knobs of 165 effects on 2026-11-22;
+12 knobs of 9 delays and reverbs show their number: their code is beyond the interpreter). Made with `--others` from those pedals'
+effect files:
+
+```bash
+.venv/bin/python -m tools.value_labels --others FOLDER [FOLDER …]
+```
 
 The table keeps each file's size as well. **An effect the table does not describe is read from
 the pedal itself** (see [Read Pedal](#which-effects-the-pedal-has-read-pedal)): a file it has no

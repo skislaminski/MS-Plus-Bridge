@@ -18,7 +18,8 @@ Run without arguments for the menu. Otherwise:
     zoom_ms_installer.py backup
     zoom_ms_installer.py check   EFFECT.ZD2 [--model ms-60bp]
     zoom_ms_installer.py install EFFECT.ZD2 [more.ZD2 | FOLDER ...]
-    zoom_ms_installer.py remove  [EFFECT.ZD2 more.ZD2 ...]
+    zoom_ms_installer.py remove  [EFFECT.ZD2 more.ZD2 ...] [--stock]
+    zoom_ms_installer.py restore-stock [EFFECT.ZD2 ...] [--from FOLDER]
     zoom_ms_installer.py rescue  [--flst BACKUP/files/FLST_SEQ.ZT2 --write]
 
 The transfer protocol is exactly the one zoomzt2.py uses (same SysEx
@@ -75,10 +76,15 @@ ZOOM_HDR = (0x52, 0x00, 0x6E)
 PORT_NAMES = ("ZOOM MS Plus Series", "ZOOM G")
 
 # model number from the MIDI identity -> (name, folder in zoom_fx_ms-plus)
+# (the numbers as zoom-explorer by thammer lists them)
 MODELS = {
     0x23: ("MS-50G+", "ms-50gp"),
+    # no list of its stock effects is known yet (zoom-zt2 has none), so it is
+    # treated like an unknown model: nothing is removed without --force
+    0x25: ("MS-200D+", None),
     0x26: ("MS-70CDR+", "ms-70cdrp"),
     0x27: ("MS-60B+", "ms-60bp"),
+    0x28: ("MS-80IR+", "ms-80irp"),
 }
 MODEL_MS60B = 0x27
 
@@ -1289,6 +1295,91 @@ def stock_catalog(folder):
     return out
 
 
+def stock_hashes(folder):
+    """MD5 of each stock effect file of a model, as Zoom ships it (the last
+    field of a line of effects_sort.txt) -> {FILENAME: md5}."""
+    out = {}
+    try:
+        with open(os.path.join(STOCK_ROOT, folder or "", "effects_sort.txt")) as f:
+            for line in f:
+                parts = line.split(" : ", 1)
+                if len(parts) == 2 and parts[0].startswith("0x"):
+                    md5 = parts[1].rsplit(",", 1)[-1].strip().lower()
+                    if re.fullmatch(r"[0-9a-f]{32}", md5):
+                        out[parts[1].split(",", 1)[0].strip().upper()] = md5
+    except OSError:
+        pass
+    return out
+
+
+# A stock effect that is never removed: the BPM module is part of the pedal
+# itself (its entry in the list has no effect file of its own).
+KEEP_STOCK = ("BPM_MDL.ZD2",)
+
+
+def stock_original(ident, name, folders=()):
+    """The stock effect `name` of this model as it came from Zoom, to bring it
+    back after it was removed: (ZD2, icon bytes, where from) or None. Taken
+    from the backups of this pedal model, newest first - a file exactly as
+    the backup read it (its SHA-256 in the manifest) with the stock id -, else
+    from `folders` (Zoom's effect files): only a file whose MD5 is the one in
+    effects_sort.txt. An icon that is missing or broken there becomes the
+    blank icon."""
+    name = name.upper()
+    eid = stock_catalog(ident.get("folder")).get(name)
+    if eid is None or eid < 0 or name in KEEP_STOCK:
+        return None
+    zic_name = name[:-4] + ".ZIC"
+
+    def checked(files_dir, wanted, sums):
+        try:
+            on_disk = next(n for n in os.listdir(files_dir)
+                           if n.upper() == wanted)
+            with open(os.path.join(files_dir, on_disk), "rb") as f:
+                data = f.read()
+        except (OSError, StopIteration):
+            return None
+        return data if sums.get(wanted) == sha256(data) else None
+
+    def effect(data):
+        try:
+            zd2 = ZD2(data)
+        except ValueError:
+            return None
+        return zd2 if zd2.id == eid else None
+
+    for path, man in backups_of(model=ident.get("model")):
+        sums = {str(f.get("name", "")).upper(): f.get("sha256")
+                for f in man.get("files", [])}
+        files_dir = os.path.join(path, "files")
+        data = checked(files_dir, name, sums)
+        zd2 = effect(data) if data else None
+        zic = checked(files_dir, zic_name, sums)
+        if zd2 and zic and not zic_problems(zic):
+            return zd2, zic, "backup %s" % os.path.basename(path)
+    md5 = stock_hashes(ident.get("folder")).get(name)
+    for folder in folders:
+        for root, _, names in os.walk(os.path.expanduser(folder)):
+            for n in names:
+                if n.upper() != name:
+                    continue
+                with open(os.path.join(root, n), "rb") as f:
+                    data = f.read()
+                zd2 = effect(data)
+                if md5 is None or hashlib.md5(data).hexdigest() != md5 \
+                        or zd2 is None:
+                    continue
+                zic = None
+                for i in names:
+                    if i.upper() == zic_name:
+                        with open(os.path.join(root, i), "rb") as f:
+                            zic = f.read()
+                if zic is None or zic_problems(zic):
+                    zic = blank_icon()
+                return zd2, zic, os.path.join(root, n)
+    return None
+
+
 def preload_shipped():
     """Read the shipped files now, not when they are first needed."""
     try:
@@ -1465,11 +1556,18 @@ def looks_complete(name, data):
 
 def latest_backup(model=None, folder=None):
     """Newest complete backup (optionally for one model only)."""
-    best = None
+    found = backups_of(model, folder)
+    return found[0] if found else None
+
+
+def backups_of(model=None, folder=None):
+    """Complete backups (optionally of one model only), newest first.
+    -> [(path, manifest)]"""
+    found = []
     try:
         dirs = sorted(os.listdir(BACKUP_ROOT))
     except OSError:
-        return None
+        return []
     for d in dirs:
         path = os.path.join(BACKUP_ROOT, d)
         try:
@@ -1483,9 +1581,11 @@ def latest_backup(model=None, folder=None):
             continue
         if folder is not None and man.get("model_folder") != folder:
             continue
-        if best is None or backup_time(man) >= backup_time(best[1]):
-            best = (path, man)
-    return best
+        found.append((path, man))
+    # of two made at the same time, the later folder counts as newer
+    order = sorted(range(len(found)), reverse=True,
+                   key=lambda i: (backup_time(found[i][1]), i))
+    return [found[i] for i in order]
 
 
 def backup_time(man):
@@ -2419,7 +2519,13 @@ def cmd_uninstall(opts, transport=None):
     verified, and only then are their files deleted, one after the other.
     The list is the delicate part, so it is written once for the whole
     selection; a failure while deleting afterwards leaves at worst files
-    behind that are in no list any more."""
+    behind that are in no list any more.
+
+    With opts.stock, stock effects instead (only those): never the last one
+    of a category, and only when a backup of this pedal model holds the file
+    as it was read - from there cmd_restore_stock brings it back, a factory
+    reset does not."""
+    stock_mode = bool(getattr(opts, "stock", False))
     wanted = list(getattr(opts, "files", None) or [])
     if getattr(opts, "file", None):
         wanted.append(opts.file)
@@ -2444,17 +2550,25 @@ def cmd_uninstall(opts, transport=None):
             return table.get(entry[0], {}).get("label", "group %d" % entry[0])
 
         added = [e for e in entries if stock and e[1].upper() not in stock]
+        own = [e for e in entries if e[1].upper() in stock
+               and e[1].upper() not in KEEP_STOCK]
+        if stock_mode and not stock:
+            raise Refused("This model is not known to the program, so it "
+                          "cannot tell its stock effects.")
         if not wanted:
-            if not added:
-                raise Refused("There are no added effects on this pedal.")
+            pool = own if stock_mode else added
+            if not pool:
+                raise Refused("There are no %s effects on this pedal."
+                              % ("stock" if stock_mode else "added"))
             picked = ui.choose_many(
-                "Added effects on this pedal:",
-                ["%-13s v%s  %s" % (e[1], e[2], label(e)) for e in added],
+                "%s effects on this pedal:"
+                % ("Stock" if stock_mode else "Added"),
+                ["%-13s v%s  %s" % (e[1], e[2], label(e)) for e in pool],
                 "Which ones should be removed?")
             if not picked:
                 say("Cancelled - nothing was changed.")
                 return 0
-            wanted = [added[i][1] for i in picked]
+            wanted = [pool[i][1] for i in picked]
 
         # ---- 1. every name must be an added effect, or nothing is removed
         targets = []
@@ -2464,13 +2578,26 @@ def cmd_uninstall(opts, transport=None):
             match = [e for e in entries if e[1].upper() == base.upper()]
             if not match:
                 wrong.append("%s is not in the effect list" % base)
-            elif match[0][1].upper() in stock or (not stock
-                                                  and not opts.force):
+            elif stock_mode and match[0][1].upper() not in stock:
+                wrong.append("%s is not a stock effect (it is removed "
+                             "without --stock)" % match[0][1])
+            elif stock_mode and match[0][1].upper() in KEEP_STOCK:
+                wrong.append("%s belongs to the pedal itself" % match[0][1])
+            elif not stock_mode and (match[0][1].upper() in stock or (
+                    not stock and not opts.force)):
                 wrong.append("%s is a stock effect (or the model is unknown)"
                              " - stock effects can NOT be brought back by a "
-                             "factory reset" % match[0][1])
+                             "factory reset; --stock removes them, keeping "
+                             "a way back" % match[0][1])
             elif match[0] not in targets:
                 targets.append(match[0])
+        for group in sorted(set(e[0] for e in targets)):
+            # an empty category is gone from the list, and nothing could be
+            # installed into it again
+            if stock_mode and all(e in targets for e in entries
+                                  if e[0] == group):
+                wrong.append("that would leave the category %s empty - keep "
+                             "one of its effects" % label((group,)))
         if wrong:
             raise Refused("%s.%s" % ("; ".join(wrong), (
                 " Added effects: %s." % ", ".join(e[1] for e in added)
@@ -2478,6 +2605,15 @@ def cmd_uninstall(opts, transport=None):
         backup_dir, _ = ensure_backup(s, flst, opts)
         if backup_dir and not table:      # the first backup of this pedal
             table = category_table(os.path.join(backup_dir, "files"), stock)
+        if stock_mode:
+            no_way_back = [e[1] for e in targets
+                           if stock_original(s.ident, e[1]) is None]
+            if no_way_back:
+                raise Refused("no backup of this pedal holds %s as it was "
+                              "read - without one %s could not be brought "
+                              "back. Make a backup first."
+                              % (", ".join(no_way_back),
+                                 "it" if len(no_way_back) == 1 else "they"))
 
         # ---- 2. the new effect list, computed and validated up front
         flst_new = flst
@@ -2504,11 +2640,16 @@ def cmd_uninstall(opts, transport=None):
                 % (i, entry[1], entry[2], label(entry), entry[3]))
         out("Saved patches that use %s lose it."
             % ("this effect" if len(targets) == 1 else "one of these effects"))
+        if stock_mode:
+            out("STOCK effects: a factory reset does NOT bring them back.")
+            out("'Bring back' (restore-stock) writes them back from the "
+                "backup.")
         if len(targets) == 1:
-            question = "Remove %s (and its icon)" % targets[0][1]
+            question = "Remove %s%s (and its icon)" % (
+                "the stock effect " if stock_mode else "", targets[0][1])
         else:
-            question = "Remove these %d effects (and their icons)" \
-                % len(targets)
+            question = "Remove these %d %seffects (and their icons)" \
+                % (len(targets), "stock " if stock_mode else "")
         if not ask_yes("%s from the Zoom %s?" % (question, s.ident["name"]),
                        opts.yes, summary):
             out("Cancelled - nothing was changed.")
@@ -2523,6 +2664,130 @@ def cmd_uninstall(opts, transport=None):
         else:
             say("%d effects removed, effect list verified: %s"
                 % (len(targets), names))
+    return 0
+
+
+def cmd_restore_stock(opts, transport=None):
+    """Bring back stock effects that are not on the pedal (removed with
+    --stock): Zoom's own files, unchanged (stock_original: from a backup of
+    this pedal model, else from opts.source by their MD5), into their own
+    category with their own id - at its end. Like an install: the files
+    first (verified), then the effect list once."""
+    wanted = list(getattr(opts, "files", None) or [])
+    folders = list(getattr(opts, "source", None) or [])
+    with Session(opts, transport) as s:
+        p = s.pedal
+        stock = stock_catalog(s.ident.get("folder"))
+        if not stock:
+            raise Refused("This model is not known to the program, so it "
+                          "does not know its stock effects.")
+        confirm_autosave(p, opts)
+        p.pcmode_on()
+        flst = p.download(FLST_NAME)
+        p.close()
+        ok, problems, entries = flst_validate(flst, s.ident["model"])
+        if not ok:
+            raise Unresolved("The effect list on the pedal is not valid "
+                             "(%s). Nothing was written - leave the pedal "
+                             "POWERED and run the rescue."
+                             % "; ".join(problems))
+        listed = set(e[1].upper() for e in entries)
+        missing = sorted(n for n, eid in stock.items() if eid >= 0
+                         and n not in listed and n not in KEEP_STOCK)
+        if not wanted:
+            if not missing:
+                raise Refused("Every stock effect of this model is on the "
+                              "pedal.")
+            picked = ui.choose_many("Stock effects that are not on this "
+                                    "pedal:", missing,
+                                    "Which ones should be brought back?")
+            if not picked:
+                say("Cancelled - nothing was changed.")
+                return 0
+            wanted = [missing[i] for i in picked]
+
+        # ---- 1. every one must have its original, or nothing is written
+        plans, wrong = [], []
+        taken = dict((e[3], e[1]) for e in entries)
+        for target in wanted:
+            name = os.path.basename(target).upper()
+            if name in listed:
+                wrong.append("%s is on the pedal" % name)
+            elif name not in missing:
+                wrong.append("%s is not a stock effect of the %s"
+                             % (name, s.ident["name"]))
+            elif any(pl[0] == name for pl in plans):
+                continue
+            else:
+                found = stock_original(s.ident, name, folders)
+                if found is None:
+                    wrong.append("%s: no backup of this pedal model holds it%s"
+                                 % (name, ", and no folder given has Zoom's "
+                                    "original file" if folders else
+                                    " (a folder of Zoom's original files "
+                                    "can be given)"))
+                elif found[0].id in taken:
+                    wrong.append("%s: its id 0x%08x is used by %s - remove "
+                                 "that effect first"
+                                 % (name, found[0].id, taken[found[0].id]))
+                else:
+                    plans.append((name,) + found)
+        if wrong:
+            raise Refused("%s." % "; ".join(wrong))
+        backup_dir, names = ensure_backup(s, flst, opts)
+        found = latest_backup(model=s.ident["model"])
+        table = category_table(os.path.join(found[0], "files"), stock) \
+            if found else {}
+
+        # ---- 2. the new effect list, computed and validated up front
+        flst_new = flst
+        files = []
+        for name, zd2, zic, _ in plans:
+            flst_new = flst_add(flst_new, name, zd2.version, zd2.id)
+            files += [(name[:-4] + ".ZIC", zic), (name, zd2.data)]
+        writing = set(n.upper() for n, _ in files)
+        orphans = [n for n in names if n.upper() in writing]
+        needed = sum(allocated(len(d)) for _, d in files) + DISK_MARGIN
+        _, available = p.disk_usage()
+        freed = sum(allocated(size) for n, size in names.items()
+                    if n.upper() in writing)
+        if available + freed < needed:
+            raise Refused("not enough free space on the pedal (%d KB free, "
+                          "%d KB needed)" % ((available + freed) // 1024,
+                                             needed // 1024))
+
+        # ---- 3. summary and ONE question
+        summary = []
+
+        def out(line):
+            summary.append(line)
+            say(line)
+
+        out("")
+        out("Ready to bring back to the Zoom %s:" % s.ident["name"])
+        for i, (name, zd2, zic, where) in enumerate(plans, 1):
+            out("  %2d) %-12s %-11s v%s -> %2d %-12s id 0x%08x  from %s"
+                % (i, name, zd2.name, zd2.version, zd2.group,
+                   table.get(zd2.group, {}).get("label", ""), zd2.id, where))
+        out("Each goes to the end of its category, unchanged.")
+        if orphans:
+            out("Left over on the pedal, deleted first: %s"
+                % ", ".join(orphans))
+        what = "this stock effect" if len(plans) == 1 \
+            else "these %d stock effects" % len(plans)
+        if not ask_yes("Write %s back to the Zoom %s now?"
+                       % (what, s.ident["name"]), opts.yes, summary):
+            out("Cancelled - nothing was written.")
+            return 0
+
+        # ---- 4. the transfer
+        with critical(s.ident):
+            if orphans:
+                remove_orphans(p, orphans, flst)
+            retries = install_files(p, files, flst, flst_new)
+        say("  Effect list updated and verified%s."
+            % (" (%d retry/retries)" % retries if retries else ""))
+        say("Brought back: %s" % ", ".join(pl[0] for pl in plans))
     return 0
 
 
@@ -2831,6 +3096,8 @@ def menu():
         say("  4) Remove added effects (one or several)")
         say("  5) Check an effect file (no pedal needed)")
         say("  6) Rescue: close the session and check the effect list")
+        say("  7) Remove stock effects (they can be brought back)")
+        say("  8) Bring back removed stock effects")
         say("  0) Quit")
         try:
             choice = input("Choice: ").strip()
@@ -2864,6 +3131,12 @@ def menu():
                     run(cmd_check, ns)
             elif choice == "6":
                 run(cmd_rescue, ns)
+            elif choice == "7":
+                ns.files, ns.stock = [], True
+                run(cmd_uninstall, ns)
+            elif choice == "8":
+                ns.files, ns.source = [], []
+                run(cmd_restore_stock, ns)
         except (KeyboardInterrupt, EOFError):
             say("\n(cancelled)")
 
@@ -2940,7 +3213,20 @@ def main(argv=None):
                    "list)")
     u.add_argument("--force", action="store_true",
                    help="also remove on an unknown model")
+    u.add_argument("--stock", action="store_true",
+                   help="remove stock effects instead (restore-stock brings "
+                   "them back from the backup)")
     u.add_argument("--new-backup", action="store_true", dest="new_backup")
+
+    b = sub.add_parser("restore-stock", help="bring back stock effects that "
+                       "were removed")
+    b.add_argument("files", nargs="*",
+                   help="their file names (none: pick from a list)")
+    b.add_argument("--from", dest="source", action="append", metavar="FOLDER",
+                   help="a folder of Zoom's original effect files, for one "
+                   "that no backup holds (only files with the MD5 of "
+                   "effects_sort.txt)")
+    b.add_argument("--new-backup", action="store_true", dest="new_backup")
 
     r = sub.add_parser("rescue", help="close the session, check the list")
     r.add_argument("--flst", help="known-good FLST_SEQ.ZT2 from a backup")
@@ -2956,6 +3242,7 @@ def main(argv=None):
         return menu()
     func = {"info": cmd_info, "backup": cmd_backup, "check": cmd_check,
             "install": cmd_install, "remove": cmd_uninstall,
+            "restore-stock": cmd_restore_stock,
             "rescue": cmd_rescue}[opts.command]
     try:
         return run(func, opts)

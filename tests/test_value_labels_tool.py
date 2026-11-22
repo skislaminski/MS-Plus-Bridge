@@ -494,6 +494,34 @@ class Labels(unittest.TestCase):
         self.assertEqual([effect for effect, _ in done["skipped"]], ["0A000010 Delay (DELAY_M.ZD2)"])
         self.assertTrue(any("Fill" in line for line in said) and any("other knobs" in line for line in said))
 
+    def test_the_effects_of_other_pedals_by_file_name(self):
+        table = {"01000010": {"name": "DYN Comp", "knobs": [["Sense", 1]], "file": "DCOMP.ZD2"}}
+        files = {"50g/DCOMP.ZD2": (0x01000010, "Other DCOMP", [("Sense", 1)]),     # the table's file: refused
+                 "50g/COMP.ZD2": (0x01000010, "Comp", [("ATTCK", 1)]),
+                 "200d/COMP.ZD2": (0x06000080, "Comp2", [("ATTCK", 1), ("VOL", 1)]),   # another build
+                 "50g/RACK.ZD2": (0x01000020, "Rack", [("Mode", 1)]),
+                 "70cdr/RACK.ZD2": (0x01000020, "Rack2", [("Mode", 1)]),        # same knobs, other texts
+                 "80ir/DELAY_I.ZD2": (0x08000012, "Delay", [("Mix", 1)])}       # the number only
+        texts = {"Comp": {2: ["SLOW", "FAST"]}, "Comp2": {2: ["SLOW", "FAST"], 3: ["0", "1"]},
+                 "Rack": {2: ["A", "B"]}, "Rack2": {2: ["A", "C"]}, "Delay": {2: ["0", "1"]}}
+
+        def value_texts(data, dis6x):
+            read = effect_names.read_zd2(data)
+            return read["knobs"], texts[read["name"]], {}
+        said = []
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(generate, "value_texts", value_texts):
+            for name, (effect_id, effect, knobs) in files.items():
+                Path(folder, name).parent.mkdir(exist_ok=True)
+                Path(folder, name).write_bytes(effect_file(effect_id, effect, knobs))
+            made, done = generate.others(table, [folder], "dis6x", said.append)
+            generate.write_others(made, Path(folder, "out.json"))
+            self.assertEqual(json.loads(Path(folder, "out.json").read_text(encoding="utf-8")), made)
+        self.assertEqual(list(made), ["COMP.ZD2"])
+        self.assertCountEqual(made["COMP.ZD2"], [{"knobs": [["ATTCK", 1]], "labels": {"2": ["SLOW", "FAST"]}},
+                                                 {"knobs": [["ATTCK", 1], ["VOL", 1]], "labels": {"2": ["SLOW", "FAST"]}}])
+        self.assertEqual(done["effects"], 5)
+        self.assertTrue(any("RACK.ZD2" in line for line in said))
+
     def test_the_command_writes_the_table_unless_it_is_a_dry_run(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder, "zoom_effects.json")
