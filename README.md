@@ -13,7 +13,8 @@ own commands.
 > document or support them. Back up your patches first. Not affiliated with Zoom, M-Vave or Line 6.
 >
 > **Other MS Plus pedals (MS-50G+, MS-70CDR+, MS-200D+) are experimental:** built and tested on the
-> MS-60B+ (firmware 1.20) only.
+> MS-60B+ (firmware 1.20) only. The MS-50G+ needs firmware 1.30 or newer: older ones have no MIDI
+> over USB (as reported by MultiStomp Studio; not checked here).
 
 ## What it does
 

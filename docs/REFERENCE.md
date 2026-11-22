@@ -52,7 +52,9 @@ See [Installation](#installation) for all three systems.
 > **Other MS Plus pedals (MS-50G+, MS-70CDR+, MS-200D+) are experimental.** They speak the same
 > SysEx family, so the bridge may work with them, but it was built and measured on the MS-60B+
 > only: their effects, knobs, DSP budget and patch layout are not checked. Try it with your patches
-> backed up, and please report what you find.
+> backed up, and please report what you find. The MS-50G+ needs firmware 1.30 or newer: according
+> to [MultiStomp Studio](https://github.com/tongatron/ZOOM-MultiStomp-Patch-Studio) its MIDI over USB
+> came with 1.30 (not checked here).
 
 ## Features
 
