@@ -175,12 +175,12 @@ class Cache(unittest.TestCase):
 
     def test_the_build_read_brings_its_own_dsp(self):
         effect_names.use_cache(None)
-        hogi = effect_names.by_file("HOGI.ZD2")
-        size = next(entry["size"] for entry in effect_names.table().values() if entry["file"] == "HOGI.ZD2")
-        effect_names.remember([{"id": hogi, "name": "HOGi", "knobs": [["Gain", 10]], "file": "HOGI.ZD2",
+        hogi = effect_names.by_file("ORGANUM.ZD2")
+        size = next(entry["size"] for entry in effect_names.table().values() if entry["file"] == "ORGANUM.ZD2")
+        effect_names.remember([{"id": hogi, "name": "Organum", "knobs": [["Gain", 10]], "file": "ORGANUM.ZD2",
                                 "size": size + 1, "dsp": 99.5}])          # another build than the table's
         self.assertEqual(effect_names.dsp(hogi), 99.5)
-        effect_names.remember([{"id": hogi, "name": "HOGi", "knobs": [["Gain", 10]], "file": "HOGI.ZD2",
+        effect_names.remember([{"id": hogi, "name": "Organum", "knobs": [["Gain", 10]], "file": "ORGANUM.ZD2",
                                 "size": size + 2}])                       # one that declares none
         self.assertIsNone(effect_names.dsp(hogi))                         # not the table build's
 

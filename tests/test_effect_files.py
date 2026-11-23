@@ -29,7 +29,7 @@ NEW, OTHER = 0x09000FFA, 0x09000FFB                      # custom effects the ta
 KEYSYNTH = 0x07000F61                                     # as installed on the pedal (tests/test_editor.py)
 PRESET = "0/94"
 REAL = json.loads((PROJECT / "tests" / "pedal_patches.json").read_text(encoding="utf-8"))["files"]
-FILES = ["BLACKOPT.ZD2", "BLACKOPT.ZIC", "HOGI.ZD2", "NEWFX.ZD2", "NEWFX.ZIC"] + [
+FILES = ["BLACKOPT.ZD2", "BLACKOPT.ZIC", "ORGANUM.ZD2", "NEWFX.ZD2", "NEWFX.ZIC"] + [
     f"{name}.ZD2" for name in ("KKFLNG1U", "KICK", "KEYSYNTH", "FRETSYN", "GLIDER", "RINGER", "LADDER", "FREEZER")]
 
 
@@ -72,7 +72,7 @@ class Messages(unittest.TestCase):
             for listing, file_name in ((False, name), (True, None)):
                 with self.assertRaises(zs.NotAllowed):
                     zs.classify(message, ID, listing=listing, file_name=file_name)
-        for other, file_name in ((zs.build_file_open(ID, "HOGI.ZD2"), name),        # another file
+        for other, file_name in ((zs.build_file_open(ID, "ORGANUM.ZD2"), name),        # another file
                                  (zs.build_file_open(ID, "NEWFX.ZIC"), "NEWFX.ZIC"),  # no effect file
                                  (zs.build_file_open(ID, "../X.ZD2"), "../X.ZD2")):
             with self.assertRaises(zs.NotAllowed):
@@ -97,12 +97,12 @@ class Table(unittest.TestCase):
         self.assertEqual(effect_names.read_zd2_part(b"ZD"), (False, None))
 
     def test_what_the_table_describes(self):
-        _, hogi = table_entry("HOGI.ZD2")
+        _, hogi = table_entry("ORGANUM.ZD2")
         _, black = table_entry("BLACKOPT.ZD2")
-        self.assertTrue(effect_names.described("HOGI.ZD2", hogi["size"]))
-        self.assertFalse(effect_names.described("HOGI.ZD2", hogi["size"] + 1))       # a custom effect rebuilt
+        self.assertTrue(effect_names.described("ORGANUM.ZD2", hogi["size"]))
+        self.assertFalse(effect_names.described("ORGANUM.ZD2", hogi["size"] + 1))       # a custom effect rebuilt
         self.assertTrue(effect_names.described("BLACKOPT.ZD2", black["size"] + 1))   # Zoom's: by its name
-        self.assertTrue(effect_names.described("hogi.zd2", None))
+        self.assertTrue(effect_names.described("organum.zd2", None))
         self.assertFalse(effect_names.described("NEWFX.ZD2", 4000))
         effect_names.remember([{"file": "NEWFX.ZD2", "size": 4000, "id": None}])     # read: no effect in it
         self.assertTrue(effect_names.described("NEWFX.ZD2", 4000))
@@ -114,11 +114,11 @@ class Table(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         cache = Path(folder.name, "pedal_effects.json")
         effect_names.use_cache(cache)
-        hogi, entry = table_entry("HOGI.ZD2")
-        effect_names.remember([{"id": int(hogi, 16), "name": "HOGi", "knobs": [["Gain", 10]], "file": "HOGI.ZD2",
+        hogi, entry = table_entry("ORGANUM.ZD2")
+        effect_names.remember([{"id": int(hogi, 16), "name": "Organum", "knobs": [["Gain", 10]], "file": "ORGANUM.ZD2",
                                 "size": entry["size"] + 1}])
         self.assertEqual(effect_names.effect(int(hogi, 16))["knobs"], [["Gain", 10]])
-        self.assertEqual(json.loads(cache.read_text(encoding="utf-8"))["HOGI.ZD2"]["knobs"], [["Gain", 10]])
+        self.assertEqual(json.loads(cache.read_text(encoding="utf-8"))["ORGANUM.ZD2"]["knobs"], [["Gain", 10]])
         effect_names.use_cache(None)
         self.assertEqual(effect_names.effect(int(hogi, 16))["knobs"], entry["knobs"])   # without it: the table
         effect_names.use_cache(cache)                                                 # the next start
@@ -132,31 +132,31 @@ class Table(unittest.TestCase):
         self.assertTrue(effect_names.described("SLAMDRV.ZD2", entry["size"]))
 
     def test_one_id_is_one_effect(self):
-        hogi, _ = table_entry("HOGI.ZD2")
+        hogi, _ = table_entry("ORGANUM.ZD2")
         effect_names.remember([{"id": int(hogi, 16), "name": "HOGiOld", "knobs": [["Gain", 10]], "file": "HOGIOLD.ZD2",
                                 "size": 100},
                                {"id": NEW, "name": "NewFx", "knobs": [], "file": "NEWB.ZD2", "size": 100},
                                {"id": NEW, "name": "NewFx2", "knobs": [], "file": "NEWA.ZD2", "size": 100}])
         self.assertEqual(effect_names.by_file("HOGIOLD.ZD2"), int(hogi, 16))   # what is on the pedal
-        self.assertIsNone(effect_names.by_file("HOGI.ZD2"))
+        self.assertIsNone(effect_names.by_file("ORGANUM.ZD2"))
         self.assertEqual(effect_names.effect(NEW)["name"], "NewFx2")            # the first by file name
         self.assertEqual(effect_names.CONFLICTS, ["NewFx (NEWB.ZD2) is left out: NewFx2 (NEWA.ZD2) has its id"])
         self.assertTrue(effect_names.described("NEWB.ZD2", 100))               # not read again
 
     def test_a_file_read_without_an_effect_in_it_is_no_effect_of_the_table_either(self):
         # an install broken off leaves the file empty: the effect was still offered as the table's
-        _, entry = table_entry("HOGI.ZD2")
-        effect_names.remember([{"file": "HOGI.ZD2", "size": 0, "id": None}])
-        self.assertTrue(effect_names.described("HOGI.ZD2", 0))              # not read again
-        self.assertIsNone(effect_names.by_file("HOGI.ZD2"))
-        effect_names.remember([{"file": "HOGI.ZD2", "size": entry["size"], "id": None, "unread": True}])
-        self.assertIsNotNone(effect_names.by_file("HOGI.ZD2"))              # not read: the table's it may be
+        _, entry = table_entry("ORGANUM.ZD2")
+        effect_names.remember([{"file": "ORGANUM.ZD2", "size": 0, "id": None}])
+        self.assertTrue(effect_names.described("ORGANUM.ZD2", 0))              # not read again
+        self.assertIsNone(effect_names.by_file("ORGANUM.ZD2"))
+        effect_names.remember([{"file": "ORGANUM.ZD2", "size": entry["size"], "id": None, "unread": True}])
+        self.assertIsNotNone(effect_names.by_file("ORGANUM.ZD2"))              # not read: the table's it may be
 
     def test_a_file_whose_build_lost_its_id_is_not_taken_for_the_table_build(self):
-        _, entry = table_entry("HOGI.ZD2")                                  # HOGI.ZD2 rebuilt with another id
-        effect_names.remember([{"id": NEW, "name": "HOGi", "knobs": [], "file": "HOGI.ZD2", "size": entry["size"] + 1},
+        _, entry = table_entry("ORGANUM.ZD2")                                  # ORGANUM.ZD2 rebuilt with another id
+        effect_names.remember([{"id": NEW, "name": "Organum", "knobs": [], "file": "ORGANUM.ZD2", "size": entry["size"] + 1},
                                {"id": NEW, "name": "Aaa", "knobs": [], "file": "AAA.ZD2", "size": 100}])
-        self.assertIsNone(effect_names.by_file("HOGI.ZD2"))                 # not the old build's id
+        self.assertIsNone(effect_names.by_file("ORGANUM.ZD2"))                 # not the old build's id
 
     def test_what_was_read_of_a_file_gone_or_changed_is_forgotten_after_a_complete_list(self):
         slam, entry = table_entry("SLAMDRV.ZD2")
@@ -164,7 +164,7 @@ class Table(unittest.TestCase):
                                 "size": entry["size"] + 7},
                                {"id": NEW, "name": "NewFx", "knobs": [], "file": "NEWFX.ZD2", "size": 100}])
         self.assertEqual(effect_names.effect(int(slam, 16))["knobs"], [["Old", 1]])
-        effect_names.forget_unlisted([("SLAMDRV.ZD2", entry["size"]), ("HOGI.ZD2", 1)])   # the table's build now
+        effect_names.forget_unlisted([("SLAMDRV.ZD2", entry["size"]), ("ORGANUM.ZD2", 1)])   # the table's build now
         self.assertEqual(effect_names.effect(int(slam, 16))["knobs"], entry["knobs"])
         self.assertIsNone(effect_names.by_file("NEWFX.ZD2"))                # no longer on the pedal
 
@@ -291,10 +291,10 @@ class Reading(ReadingCase):
         self.assertLess(len(self.world.file_log), first)
 
     def test_a_custom_effect_rebuilt_is_read_again(self):
-        hogi = int(table_entry("HOGI.ZD2")[0], 16)
-        seen = self.read({"HOGI.ZD2": effect_file(hogi, "HOGi", [("Gain", 100), ("Tone", 10), ("Blend", 100)])},
+        hogi = int(table_entry("ORGANUM.ZD2")[0], 16)
+        seen = self.read({"ORGANUM.ZD2": effect_file(hogi, "Organum", [("Gain", 100), ("Tone", 10), ("Blend", 100)])},
                          files=[name for name in FILES if not name.startswith("NEWFX")])
-        self.assertEqual(self.opened(), ["HOGI.ZD2", "HOGI.ZD2"])
+        self.assertEqual(self.opened(), ["ORGANUM.ZD2", "ORGANUM.ZD2"])
         self.assertEqual([knob["name"] for knob in bridge.chain_entry(hogi)["knobs"]], ["Gain", "Tone", "Blend"])
         self.assertTrue(seen["state"]["effects"]["read"]["result"]["ok"])
 

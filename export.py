@@ -190,8 +190,8 @@ def main(argv=None) -> None:
         program = write_program(folder)
         print(f"Written: {program} ({(program / 'VERSION').read_text(encoding='utf-8').strip()}).")
         pictures = write_pictures(program)
-        print(f"Written: {pictures} pictures of effects, from the installer's backups on this computer." if pictures
-              else "No pictures of effects: this computer's Zoom MS Installer has no backup yet (the names stand in).")
+        print(f"Written: {pictures} pictures of effects, from the installer's backups on this computer and those "
+              "that come with the program." if pictures else "No pictures of effects (the names stand in).")
         planned = plan_installation(folder)
         print({"added": "At its first start the Pi installs the bridge by itself: it needs the internet once "
                         "(WLAN as set in Raspberry Pi Imager, or a cable) and takes a few minutes. "

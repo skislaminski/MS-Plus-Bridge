@@ -68,6 +68,13 @@ ALWAYS_READ = {"N2ZBANK.ZD2"}
 CUSTOM_FROM = 0xF00
 ZOOM_OWN = {0xF00, 0xFF0}                      # LINE SEL and BPM among them
 BUILT_IN = {0xFF0: {"name": "BPM", "knobs": []}}  # in the pedal itself: no effect file to read
+# Numbers of MS Plus effects that were given up (2026-11-23): no other effect may take them, so that a
+# preset that still holds one is never read as another. Warble lives on in Tape 0.20.
+RETIRED = {0xF6F: "DEFRETTR", 0xFBD: "FADER", 0xF33: "FIFTHS", 0xF64: "FOLDER", 0xF31: "FREQSHFT",
+           0xFD2: "GLITCH", 0xFB3: "HALFSPD", 0xF3C: "LOUDNESS", 0xFDE: "LPG", 0xFC5: "MANDO", 0xFE4: "MORPH",
+           0xFD8: "RESONATR", 0xF47: "RETRIG", 0xF49: "REVLOOP", 0xF68: "SAG", 0xF4A: "SCRATCH",
+           0xF9F: "SITAR", 0xF4C: "SPEEDUP", 0xF6D: "SWELL", 0xF80: "THICKEN", 0xFC9: "TWANG",
+           0xFC0: "TWELVSTR", 0xFD1: "UNISON", 0xFE9: "WARBLE"}
 # An effect read from the pedal before this day counts as not described, so that the next Read
 # Pedal reads its file again: on 2026-10-30 the custom effects were installed into their own
 # categories instead of SFX, at the same size (only the id's top byte changed), and the pedal's

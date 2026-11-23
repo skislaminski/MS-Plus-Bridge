@@ -15,7 +15,7 @@ import zoom_sysex as zs
 from tests.sim import CONTROLLER_PORT, ID, PROJECT, ZOOM_PORT, SimulatedCase, World, mapping, patch_dump, sysex
 
 PRESET = "0/94"
-STOCK, ROOM, HOGI, AMP = 0x01000020, 0x0B000020, 0x09000F83, 0x05000020   # BlackOpt, BrghtRoom, HOGi, AMPG SVT
+STOCK, ROOM, ORGANUM, AMP = 0x01000020, 0x0B000020, 0x09000F83, 0x05000020   # BlackOpt, BrghtRoom, Organum, AMPG SVT
 REAL = json.loads((PROJECT / "tests" / "pedal_patches.json").read_text(encoding="utf-8"))
 
 
@@ -65,7 +65,7 @@ class Patches(unittest.TestCase):
             zs.classify(message, ID)
 
     def test_a_file_of_the_pedals_list(self):
-        self.assertEqual(zs.parse_file_entry(zs.zoom_body(file_entry("HOGI.ZD2"), ID)), "HOGI.ZD2")
+        self.assertEqual(zs.parse_file_entry(zs.zoom_body(file_entry("ORGANUM.ZD2"), ID)), "ORGANUM.ZD2")
         self.assertIsNone(zs.parse_file_entry(zs.zoom_body(patch_dump([(STOCK, 0)]), ID)))
         self.assertEqual(effect_names.by_file("blackopt.zd2"), STOCK)
 
@@ -75,7 +75,7 @@ class Adding(SimulatedCase):
         super().setUp()
         self.approve(*bridge.REQUIRED_KINDS, "query_patch", "add_effect", "change_effect")
 
-    def run_calls(self, *calls, world=None, until=2.0, reported=(HOGI,)) -> list:
+    def run_calls(self, *calls, world=None, until=2.0, reported=(ORGANUM,)) -> list:
         self.install({PRESET: [mapping(0, 2)]})
         known = json.loads(bridge.MEASUREMENTS.read_text(encoding="utf-8"))
         known["effects"] = [f"{effect:08X}" for effect in reported]
@@ -98,11 +98,11 @@ class Adding(SimulatedCase):
         return seen
 
     def test_an_empty_place_is_added_and_an_effect_chosen_for_it(self):
-        replies = self.run_calls({"action": "add"}, 1.5, {"action": "change", "slot": 2, "effect": f"{HOGI:08X}"})
+        replies = self.run_calls({"action": "add"}, 1.5, {"action": "change", "slot": 2, "effect": f"{ORGANUM:08X}"})
         self.assertEqual(replies[:2], [(200, {"result": None})] * 2)
-        self.assertEqual(self.world.chain, [STOCK, ROOM, HOGI])
+        self.assertEqual(self.world.chain, [STOCK, ROOM, ORGANUM])
         self.assertEqual(len(self.world.uploads), 1)
-        self.assertEqual([entry["name"] for entry in replies[-1]["chain_effects"]], ["BlackOpt", "BrghtRoom", "HOGi"])
+        self.assertEqual([entry["name"] for entry in replies[-1]["chain_effects"]], ["BlackOpt", "BrghtRoom", "Organum"])
 
     def test_the_place_is_said_once_the_pedal_has_it(self):
         *_, state = self.run_calls({"action": "add"}, until=1.6)
@@ -140,20 +140,20 @@ class Choices(SimulatedCase):
         return seen["state"]
 
     def test_every_effect_file_the_pedal_lists_can_be_chosen(self):
-        state = self.listed(["HOGI.ZD2", "HOGI.ZIC", "DUMMY.WAV", "NOT_KNOWN.ZD2", "BLACKOPT.ZD2"])
+        state = self.listed(["ORGANUM.ZD2", "ORGANUM.ZIC", "DUMMY.WAV", "NOT_KNOWN.ZD2", "BLACKOPT.ZD2"])
         chosen = {choice["id"] for choice in state["effects"]["choices"]}
-        self.assertEqual(chosen, {"0B000050", "09000FF0", "01000020", "0B000020", f"{effect_names.by_file('HOGI.ZD2'):08X}"})
+        self.assertEqual(chosen, {"0B000050", "09000FF0", "01000020", "0B000020", f"{effect_names.by_file('ORGANUM.ZD2'):08X}"})
         self.assertEqual(set(json.loads(bridge.MEASUREMENTS.read_text(encoding="utf-8"))["effects"]),
                          chosen)                                     # kept for the next start
 
     def test_nothing_is_taken_off_by_a_list(self):
         # the installer lists after deleting what it replaces and before writing it again
-        state = self.listed(["HOGI.ZD2"])
+        state = self.listed(["ORGANUM.ZD2"])
         self.assertIn("0B000050", {choice["id"] for choice in state["effects"]["choices"]})
 
 
 class ReadPedal(SimulatedCase):
-    FILES = ["BLACKOPT.ZD2", "BLACKOPT.ZIC", "HOGI.ZD2", "HOGI.ZIC", "NOT_KNOWN.ZD2", "DUMMY.WAV"] + [
+    FILES = ["BLACKOPT.ZD2", "BLACKOPT.ZIC", "ORGANUM.ZD2", "ORGANUM.ZIC", "NOT_KNOWN.ZD2", "DUMMY.WAV"] + [
         f"{name}.ZD2" for name in ("KKFLNG1U", "KICK", "KEYSYNTH", "FRETSYN", "GLIDER", "RINGER", "LADDER", "FREEZER")]
 
     def setUp(self) -> None:

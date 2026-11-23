@@ -115,7 +115,8 @@ class Finding(PictureCase):
     def test_the_newest_complete_backup_first_then_the_others_then_the_adapted_effects(self):
         self.assertEqual(effect_pictures.folders(self.root), [
             self.root / "Backups" / "newest-complete" / "files", self.root / "Backups" / "newer-broken-off" / "files",
-            self.root / "Backups" / "older" / "files", self.root / "Adapted" / "ms-60bp", self.root])
+            self.root / "Backups" / "older" / "files", self.root / "Adapted" / "ms-60bp", self.root,
+            effect_pictures.BUNDLED])
         pictures = effect_pictures.Pictures(self.root)
         widths = {file: pictures.picture(file) and self.pixels(pictures.picture(file))[0]
                   for file in ("A.ZD2", "b.zd2", "C.ZD2", "D.ZD2", "E.ZD2", "BAD.ZD2")}
@@ -144,6 +145,13 @@ class Finding(PictureCase):
 
     def test_without_a_data_folder_there_are_none(self):
         self.assertIsNone(effect_pictures.Pictures(self.root / "missing").picture("A.ZD2"))
+
+    def test_our_effects_and_the_waveformer_ones_come_with_the_program(self):
+        pictures = effect_pictures.Pictures(self.root / "missing")
+        for file in ("KEYSYNTH.ZD2", "ACID.ZD2", "WFGALACT.ZD2"):
+            self.assertTrue(pictures.picture(file).startswith(b"\x89PNG"), file)
+        backup(self.root, "newest", 400.0, True, {"KEYSYNTH.ZIC": wide(13)})    # the pedal's own counts first
+        self.assertEqual(self.pixels(effect_pictures.Pictures(self.root).picture("KEYSYNTH.ZD2"))[0], 13)
 
 
 class TheRoute(PictureCase):

@@ -107,14 +107,14 @@ class Changing(SimulatedCase):
         self.assertEqual(reply, (200, {"result": None}))
         self.assertEqual(changes_sent(self.world), [(1, HOGI)])
         self.assertEqual(self.world.chain, [STOCK, HOGI])
-        self.assertEqual([entry["name"] for entry in state["chain_effects"]], ["BlackOpt", "HOGi"])
+        self.assertEqual([entry["name"] for entry in state["chain_effects"]], ["BlackOpt", "Organum"])
         self.assertEqual(state["effects"]["change"], {"approved": True, "busy": False, "result": {
-            "ok": True, "text": "Effect 2 is HOGi now – save the preset on the pedal to keep it"}})
+            "ok": True, "text": "Effect 2 is Organum now – save the preset on the pedal to keep it"}})
 
     def test_the_choices_are_the_effects_the_pedal_reported_by_group(self):
         *_, state = self.change()
         self.assertEqual([(choice["group"], choice["name"]) for choice in state["effects"]["choices"]],
-                         [("Dynamics", "BlackOpt"), ("Modulation", "ChorusOne"), ("SFX", "HOGi"),
+                         [("Dynamics", "BlackOpt"), ("Modulation", "ChorusOne"), ("SFX", "Organum"),
                           ("Reverb", "BrghtRoom")])      # a custom effect where it is installed, as on the pedal
 
     def test_a_custom_effect_reported_under_two_ids_is_offered_once(self):
@@ -132,7 +132,7 @@ class Changing(SimulatedCase):
         world.takes_effects = False
         *_, state = self.change((1, HOGI), world=world)
         self.assertEqual(state["effects"]["change"]["result"], {
-            "ok": False, "text": "The pedal did not take HOGi: effect 2 is ChorusOne"})
+            "ok": False, "text": "The pedal did not take Organum: effect 2 is ChorusOne"})
 
     def test_what_cannot_be_sent(self):
         replies = self.change((1, 0x0A000020), (2, HOGI), (1, CHORUS))[:-1]

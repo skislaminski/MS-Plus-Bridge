@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Optional
 
 RECHECK_SECONDS = 60.0    # a backup made meanwhile counts after this long, without a restart
+# the pictures of our own effects and of the Waveformer effects, for one no backup holds yet
+BUNDLED = Path(__file__).resolve().parent / "effect_icons"
 KEPT = 512                # pictures kept in memory at most
 
 
@@ -65,7 +67,8 @@ def folders(data_root) -> list:
     """Where the pictures are looked for, the first that has one counts: the files of the newest
     complete backup (as nam_bank.patches_using_bank takes it), those of the other backups from
     the newest on, then the effects adapted for a pedal (Adapted/<model>), then the folder itself
-    (the pictures export.py wrote onto the Pi's card). Custom effects change their ids from one
+    (the pictures export.py wrote onto the Pi's card), last the ones that come with the program
+    (BUNDLED). Custom effects change their ids from one
     backup to the next; their file names stay."""
     backups = []
     for files in Path(data_root, "Backups").glob("*/files"):
@@ -76,7 +79,7 @@ def folders(data_root) -> list:
             backups.append((False, 0.0, files))
     newest = max((backup for backup in backups if backup[0]), key=lambda backup: backup[1], default=None)
     backups.sort(key=lambda backup: (backup is newest, backup[1]), reverse=True)
-    return [files for *_, files in backups] + sorted(Path(data_root, "Adapted").glob("*")) + [Path(data_root)]
+    return [files for *_, files in backups] + sorted(Path(data_root, "Adapted").glob("*")) + [Path(data_root), BUNDLED]
 
 
 def find(data_root) -> dict:

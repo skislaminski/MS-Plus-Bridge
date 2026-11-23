@@ -27,6 +27,14 @@ def zd2(effect_id: int, name: str, knobs) -> bytes:
 
 
 class Table(unittest.TestCase):
+    def test_no_effect_of_the_table_takes_a_retired_number(self):
+        table = effect_names.table()
+        numbers = [int(key, 16) & 0xFFFFFF for key in table]
+        self.assertFalse(set(numbers) & set(effect_names.RETIRED))
+        self.assertFalse({entry["file"] for entry in table.values()} & {f"{name}.ZD2" for name in effect_names.RETIRED.values()})
+        custom = [number for number in numbers if number >= effect_names.CUSTOM_FROM]
+        self.assertEqual(len(custom), len(set(custom)))      # one number, one effect
+
     def test_an_effect_file_gives_id_name_and_knobs(self):
         effect = effect_names.read_zd2(zd2(0x0A000020, "AnalogDly", [("Time", 962), ("Mix", 100)]))
         self.assertEqual(effect, {"id": 0x0A000020, "name": "AnalogDly", "knobs": [["Time", 962], ["Mix", 100]]})

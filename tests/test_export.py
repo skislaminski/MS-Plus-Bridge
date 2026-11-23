@@ -189,8 +189,9 @@ class Card(ExportCase):
         program = self.card / export.PROGRAM_FOLDER
         (program / "pictures").mkdir(parents=True)
         (program / "pictures" / "GONE.ZIC").write_bytes(picture)            # of an effect no longer there
-        self.assertIn("Written: 1 pictures of effects", self.export("--to", str(self.card)))
-        self.assertEqual(sorted(path.name for path in (program / "pictures").iterdir()), ["DCOMP.ZIC"])
+        bundled = sorted(path.name for path in effect_pictures.BUNDLED.glob("*.ZIC"))     # those of the program
+        self.assertIn(f"Written: {1 + len(bundled)} pictures of effects", self.export("--to", str(self.card)))
+        self.assertEqual(sorted(path.name for path in (program / "pictures").iterdir()), sorted(["DCOMP.ZIC"] + bundled))
         self.assertEqual((program / "pictures" / "DCOMP.ZIC").read_bytes(), picture)
         # the Pi: no installer folder, the card's pictures (ui.PICTURES takes that folder there)
         self.assertEqual(effect_pictures.Pictures(program / "pictures").picture("DCOMP.ZD2"), effect_pictures.png(picture))

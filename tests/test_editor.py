@@ -216,7 +216,7 @@ class Editing(EditorCase):
 
 class GoneEffects(EditorCase):
     def test_a_pedal_value_waiting_for_a_replaced_effect_never_reaches_the_new_one(self):
-        # the expression pedal sets ChorusOne · Tone; ChorusOne is replaced by HOGi while it moves
+        # the expression pedal sets ChorusOne · Tone; ChorusOne is replaced by Organum while it moves
         on_chorus = {PRESET: [mapping(1, 4, effect=f"{CHORUS:08X}")]}
         world = World([(1.1, cc(64))], chain=[STOCK, CHORUS], length=2.0)
         replies = self.edit({"action": "change", "slot": 1, "effect": f"{HOGI:08X}"}, world=world,
