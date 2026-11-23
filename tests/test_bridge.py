@@ -323,6 +323,7 @@ class Interface(SimulatedCase):
         self.assertEqual(results["page"][0], 200)
         self.assertIn(b"MS Plus Bridge", results["page"][1])
         self.assertTrue(results["start state"]["connected"])
+        self.assertEqual(results["start state"]["model"], "MS-60B+")      # the interface takes its colours
         self.assertEqual(results["start state"]["patch"], {"key": PRESET, "display": "095", "name": None})
         self.assertEqual(results["foreign"][0], 403)
         self.assertEqual(results["learning"], [{"slot": 2, "param": 5, "min": 0, "max": 150, "count": 16}])

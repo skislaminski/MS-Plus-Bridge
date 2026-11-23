@@ -68,8 +68,8 @@ A phone or tablet uses the bridge's interface in the browser:
   use it – only do this in your own WLAN.
 - **With a Raspberry Pi:** join the Pi's WLAN "MS Plus Bridge" and open `http://10.42.0.1`.
 - **Android without a computer (experimental, not yet tried with a real pedal):** Chrome on Android runs
-  the bridge itself, the pedal on a USB-OTG adapter. Open the page `webmidi/` of this repository over
-  HTTPS (for example from GitHub Pages). It asks for the approvals and reads the pedal's device ID like
+  the bridge itself, the pedal on a USB-OTG adapter. Open
+  **https://skislaminski.github.io/MS-Plus-Bridge/webmidi/** in Chrome. It asks for the approvals and reads the pedal's device ID like
   the first start on a computer, keeps the settings in the browser and starts without internet after
   the first time. Keep the screen on and the page in front: Android pauses pages in the background.
   iPhone and iPad cannot do this: no browser there has Web MIDI.

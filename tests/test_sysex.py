@@ -154,6 +154,8 @@ class Encoding(unittest.TestCase):
     def test_parsers(self):
         identity = zs.parse_identity_reply(message("F0 7E 00 06 02 52 6E 00 27 00 31 2E 32 30 F7"))
         self.assertEqual((identity.device_id, identity.version), (ID, "1.20"))
+        self.assertEqual(zs.model_name(identity), "MS-60B+")
+        self.assertIsNone(zs.model_name(zs.parse_identity_reply(message("F0 7E 00 06 02 52 6E 00 7F 00 31 F7"))))
         body = zs.zoom_body(message("F0 52 00 6E 64 20 01 00 02 32 00 00 00 00 F7"), ID)
         ack = zs.parse_param(body)
         self.assertEqual((ack.ack, ack.slot, ack.param, ack.value), (True, 0, 2, 50))

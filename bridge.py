@@ -803,6 +803,7 @@ class Session:
         self.interval = self.min_interval
         self.sender = zs.ZoomSender(self.zoom_out, bridge.approvals)
         self.edit_enabled = self.ready = False
+        self.model = None                                   # the pedal's name from its identity ("MS-60B+")
 
         self.bank_msb = self.bank_lsb = 0
         self.bank_selected = False                          # bank select came last: a program change counts
@@ -993,6 +994,7 @@ class Session:
         if identity.device_id != self.device_id:
             sys.exit(f"Device ID {identity.device_id:02X} does not match config.yaml – nothing further sent.")
         self.sender.device_id = self.device_id
+        self.model = zs.model_name(identity)
 
         self.sender.send(zs.build_edit_enable(self.device_id))
         self.edit_enabled = True
@@ -3399,6 +3401,7 @@ class Bridge:
         state = {
             "connected": bool(session and session.ready),
             "status": self.status,
+            "model": session.model if session else None,     # the interface takes the pedal's colours
             "lease": self.lease is not None,                 # released with the button: it can be taken back
             "profile": PROFILE,
             "devices": self._devices(),

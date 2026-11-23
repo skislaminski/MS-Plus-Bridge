@@ -13,17 +13,44 @@
     color-scheme: dark;
     --panel: #151413; --soft: #211f1d; --card: #0e0d0c;
     --ink: #f3f0e6; --muted: #b7b2a4; --line: rgba(243, 240, 230, .34);
-    --accent: #ee7a24; --accent-ink: #1c0e03; --blue: #6aa9df;
+    --accent: #ee7a24; --accent-hi: #f79243; --accent-lo: #d5630f; --accent-ink: #1c0e03;
+    --blue: #6aa9df; --blue-hi: #8ec0ec; --blue-lo: #4d8fc9;
     --lamp: #ff5433; --ok: #43d15f; --bad: #ff9a88;
+    --top: #1c1b19; --frame: #000; --rule: var(--ink);
   }
+  /* The panel takes the colours of the pedal that is connected (state.model): its body for the frame,
+     its screen for the switches that were orange. Without a pedal it stays as above. */
+  body[data-model="MS-50G+"] { --panel: #17181a; --soft: #24262a; --card: #0d0e10; --top: #27292d;
+    --frame: #e6e7e9; --rule: #e6e7e9; --body: #e6e7e9; --screen: #f2a0ab; --knob: #111;
+    --accent: #ee6f86; --accent-hi: #f597a8; --accent-lo: #cf4a63; --accent-ink: #2a0610; }
+  body[data-model="MS-60B+"] { --panel: #1b0c0c; --soft: #2b1414; --card: #120707; --top: #2c1010;
+    --frame: #c8221f; --rule: #e3262b; --body: #d42724; --screen: #f6a69b; --knob: #111;
+    --accent: #e3262b; --accent-hi: #f0484c; --accent-lo: #b8161b; --accent-ink: #fff; }
+  body[data-model="MS-70CDR+"] { --panel: #0b1420; --soft: #13233a; --card: #070d16; --top: #0f1e33;
+    --frame: #2b8fe0; --rule: #2b8fe0; --body: #2b8fe0; --screen: #6ff0c4; --knob: #111;
+    --accent: #2f97ea; --accent-hi: #5cb2f2; --accent-lo: #1c72bd; --accent-ink: #fff;
+    /* blue is this pedal's own colour: what learns turns the screen's green */
+    --blue: #3fd6a8; --blue-hi: #74e6c3; --blue-lo: #23ad84; }
+  body[data-model="MS-80IR+"] { --panel: #121014; --soft: #1f1b24; --card: #0a090c; --top: #1d1922;
+    --frame: #3a3640; --rule: #b98ef5; --body: #232126; --screen: #b98ef5; --knob: #c9a54e;
+    --accent: #a45cf0; --accent-hi: #bd85f5; --accent-lo: #7e36cc; --accent-ink: #fff; }
+  body[data-model="MS-200D+"] { --panel: #1a170a; --soft: #2a2512; --card: #110f05; --top: #2a240b;
+    --frame: #f0d01c; --rule: #f0d01c; --body: #f0d01c; --screen: #e4f0a6; --knob: #111;
+    --accent: #f4d320; --accent-hi: #fae36a; --accent-lo: #cfae08; --accent-ink: #1d1800; }
+  body[data-model] main { border-width: 2px; }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; color: var(--ink); background: #000;
          font: 14px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; }
   main { max-width: 1000px; margin: 14px auto 28px; padding: 12px 12px 4px;
-         background: linear-gradient(#1c1b19, var(--panel)); border: 1px solid #000; border-radius: 6px;
+         background: linear-gradient(var(--top), var(--panel)); border: 1px solid var(--frame); border-radius: 6px;
          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 16px 34px rgba(0, 0, 0, .55); }
   header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px;
-           margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+           margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--rule); }
+  /* under the title the connected pedal: a small picture of it in its colours, and its name */
+  .brand { display: flex; flex-direction: column; gap: 4px; }
+  .model { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700;
+           letter-spacing: .14em; color: var(--ink); }
+  .model svg { width: 20px; height: 28px; flex: none; }
   h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .18em; margin: 0; font-weight: 700; white-space: nowrap; }
   h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; margin: 0; font-weight: 700; color: var(--muted); }
@@ -39,7 +66,7 @@
      tools in this program: the N2Z Bank, the IR Loader Tool, KeyWave Tables and the Zoom MS Installer.
      Every tab has the same width. */
   .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-  .tabs button.on { background: linear-gradient(#f79243, #d5630f); color: var(--accent-ink); }
+  .tabs button.on { background: linear-gradient(var(--accent-hi), var(--accent-lo)); color: var(--accent-ink); }
   iframe.tool { display: none; width: 100%; height: calc(100vh - 92px); border: 0; border-radius: 4px; background: transparent; }
   iframe.tool.on { display: block; }
   body.tool main > :not(header):not(iframe.tool) { display: none !important; }
@@ -85,7 +112,7 @@
            font-size: 12px; font-variant-numeric: tabular-nums; }
   .pedal b { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
   .meter { width: 56px; height: 6px; background: var(--card); border: 1px solid #000; border-radius: 2px; overflow: hidden; }
-  .meter i { display: block; height: 100%; width: 0; background: linear-gradient(#f79243, #d5630f); }
+  .meter i { display: block; height: 100%; width: 0; background: linear-gradient(var(--accent-hi), var(--accent-lo)); }
   #readout { min-width: 3ch; text-align: right; }
   /* the DSP the chain takes, as the effect files declare it (the pedal counts the same to decide what a
      preset can hold): one part per effect, an effect that is off dimmer; orange from 90 %, red beyond */
@@ -116,8 +143,8 @@
            padding: 6px 10px; border-radius: 3px; border: 1px solid #000; cursor: pointer; white-space: nowrap;
            color: #16120c; background: linear-gradient(#f7f3e8, #cbc5b3);
            box-shadow: 0 2px 0 #000, inset 0 1px 0 rgba(255, 255, 255, .7); }
-  button.primary { background: linear-gradient(#f79243, #d5630f); color: var(--accent-ink); }
-  button.learn-btn { background: linear-gradient(#8ec0ec, #4d8fc9); }
+  button.primary { background: linear-gradient(var(--accent-hi), var(--accent-lo)); color: var(--accent-ink); }
+  button.learn-btn { background: linear-gradient(var(--blue-hi), var(--blue-lo)); }
   button:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 #000; }
   button:disabled { opacity: .4; cursor: default; }
   select option:disabled { color: #6f6a60; }            /* an effect that would overflow the DSP */
@@ -221,12 +248,12 @@
   /* folded: its links as chips */
   .link-chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 100%; padding-left: 22px; }
   .link-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px 0 5px; border-radius: 10px;
-               font-size: 11px; color: var(--accent); background: rgba(238, 122, 36, .1); border: 1px solid rgba(238, 122, 36, .45);
+               font-size: 11px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
                white-space: nowrap; }
   .link-chip svg { width: 12px; height: 12px; }
   .link-chip b { font-size: 9px; letter-spacing: .06em; }
   .link-chip em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .link-chip.cc { color: var(--blue); background: rgba(106, 169, 223, .1); border-color: rgba(106, 169, 223, .45); }
+  .link-chip.cc { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
   /* a knob: the symbol that links it, its name, the slider, its value, and the strip of its link; the
      value as the pedal shows it, up to eight characters: 10ch, as capitals are wider than digits
      ("OD-BOOST", "1/4×16") */
@@ -238,10 +265,10 @@
       background: none; border: 1px solid rgba(243, 240, 230, .18); border-radius: 3px; box-shadow: none; color: var(--muted);
       opacity: .75; }
   .fx-knobs button.link-icon:hover { opacity: 1; border-color: var(--line); color: var(--ink); }
-  .fx-knobs .editor-knob.linked button.link-icon { opacity: 1; color: var(--accent); border-color: rgba(238, 122, 36, .45);
-                                                   background: rgba(238, 122, 36, .12); }
-  .fx-knobs .editor-knob.waiting button.link-icon { opacity: 1; color: var(--blue); border-color: rgba(106, 169, 223, .7);
-      background: rgba(106, 169, 223, .14); animation: wait-blink 1s ease-in-out infinite; }
+  .fx-knobs .editor-knob.linked button.link-icon { opacity: 1; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+                                                   background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .fx-knobs .editor-knob.waiting button.link-icon { opacity: 1; color: var(--blue); border-color: color-mix(in srgb, var(--blue) 70%, transparent);
+      background: color-mix(in srgb, var(--blue) 14%, transparent); animation: wait-blink 1s ease-in-out infinite; }
   @keyframes wait-blink { 50% { opacity: .25; } }
   .fx-knobs .knob-name { color: var(--muted); }
   .fx-knobs .editor-knob.linked .knob-name { color: var(--ink); }
@@ -252,8 +279,8 @@
   .link-slider { position: relative; height: 30px; touch-action: none; }
   .link-track { position: absolute; left: 7px; right: 7px; top: 15px; height: 4px; border-radius: 2px; background: #050505;
                 box-shadow: inset 0 1px 1px rgba(0, 0, 0, .9), 0 1px 0 rgba(255, 255, 255, .06); }
-  .link-band { position: absolute; top: -1px; height: 6px; border-radius: 3px; background: rgba(238, 122, 36, .55); }
-  .editor-knob.cc .link-band { background: rgba(106, 169, 223, .55); }
+  .link-band { position: absolute; top: -1px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .editor-knob.cc .link-band { background: color-mix(in srgb, var(--blue) 55%, transparent); }
   .learned-range { position: absolute; top: -5px; height: 14px; border: 1px dashed rgba(243, 240, 230, .45); border-radius: 3px;
                    pointer-events: none; }
   .end-handle { position: absolute; top: 2px; width: 8px; height: 16px; margin: -8px 0 0 -4px; border-radius: 2px; cursor: ew-resize;
@@ -264,10 +291,10 @@
   .end-handle.out { background: var(--bad); }
   .end-handle.back, .link-band.back { transition: left .25s cubic-bezier(.3, 1.6, .5, 1), width .25s cubic-bezier(.3, 1.6, .5, 1); }
   .live-point { position: absolute; top: 2px; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; cursor: ew-resize;
-                touch-action: none; border: 2px solid var(--accent); background: var(--panel); box-shadow: 0 0 6px rgba(238, 122, 36, .6); }
+                touch-action: none; border: 2px solid var(--accent); background: var(--panel); box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent); }
   .live-point::after { content: ""; position: absolute; inset: -8px; }        /* a bigger target for a finger */
   .live-point.drag { background: var(--accent); }
-  .editor-knob.cc .live-point { border-color: var(--blue); box-shadow: 0 0 6px rgba(106, 169, 223, .6); }
+  .editor-knob.cc .live-point { border-color: var(--blue); box-shadow: 0 0 6px color-mix(in srgb, var(--blue) 60%, transparent); }
   .range-note { position: absolute; right: 0; top: -3px; font-size: 10px; color: var(--bad); white-space: nowrap; pointer-events: none;
                 opacity: 0; transition: opacity .2s; }
   .range-note.show { opacity: 1; }
@@ -291,7 +318,7 @@
   .link-strip button.strip-icon { min-width: 0; width: 20px; height: 18px; padding: 0; display: grid; place-items: center; border-radius: 2px;
       background: none; border: 1px solid transparent; box-shadow: none; color: var(--muted); font-size: 13px; }
   .link-strip button.strip-icon:hover { border-color: var(--line); }
-  .link-strip button.strip-icon.on { color: var(--accent); border-color: rgba(238, 122, 36, .45); background: rgba(238, 122, 36, .12); }
+  .link-strip button.strip-icon.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .fx-knobs button.strip-remove { min-width: 0; margin-left: auto; width: 16px; height: 18px; padding: 0; display: grid; place-items: center;
       background: none; border: 0; box-shadow: none; color: var(--bad); }
   @container (max-width: 520px) {     /* narrow: the strip of a link goes under its slider, bigger for a finger */
@@ -320,7 +347,7 @@
   .knob.fx .fx-switch select { height: 22px; font-size: 11px; padding: 0 4px; }
   .knob.fx b.switch-cc { min-width: 0; display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 2px;
       font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--blue);
-      border: 1px solid rgba(106, 169, 223, .45); background: rgba(106, 169, 223, .08); }
+      border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 8%, transparent); }
   .knob.fx button.switch-remove { min-width: 0; width: 18px; height: 20px; padding: 0; display: grid; place-items: center;
       background: none; border: 0; box-shadow: none; color: var(--bad); }
   .knob.fx button.lamp { min-width: 0; width: 14px; height: 14px; padding: 0; border-radius: 50%; flex: none;
@@ -428,8 +455,8 @@
   .fx-knobs .dial-cell button.link-icon { position: absolute; top: 2px; left: 2px; }
   @container (max-width: 520px) { .dial-cell { padding-top: 32px; } }       /* the bigger symbol for a finger */
   .fx-knobs .dial-cell.waiting { border-color: var(--blue); }
-  .fx-knobs .dial-cell.waiting button.link-icon { opacity: 1; color: var(--blue); border-color: rgba(106, 169, 223, .7);
-      background: rgba(106, 169, 223, .14); animation: wait-blink 1s ease-in-out infinite; }
+  .fx-knobs .dial-cell.waiting button.link-icon { opacity: 1; color: var(--blue); border-color: color-mix(in srgb, var(--blue) 70%, transparent);
+      background: color-mix(in srgb, var(--blue) 14%, transparent); animation: wait-blink 1s ease-in-out infinite; }
   .dial { width: 44px; height: 44px; border-radius: 50%; cursor: ns-resize; touch-action: none; }
   .dial svg { display: block; width: 100%; height: 100%; }
   .dial-track { fill: none; stroke: #050505; stroke-width: 4; stroke-linecap: round; }
@@ -458,7 +485,18 @@
 <body>
 <main>
   <header>
-    <h1 id="title">MS Plus Bridge</h1>
+    <div class="brand">
+      <h1 id="title">MS Plus Bridge</h1>
+      <span class="model" id="model" hidden>
+        <svg viewBox="0 0 24 34" aria-hidden="true">
+          <rect x="1" y="1" width="22" height="32" rx="3" fill="var(--body)" stroke="#000"/>
+          <rect x="5" y="4" width="14" height="10" rx="1" fill="var(--screen)" stroke="#000" stroke-width=".8"/>
+          <g fill="var(--knob)" stroke="#000" stroke-width=".5"><circle cx="5.5" cy="18" r="1.7"/><circle cx="9.8" cy="18" r="1.7"/>
+            <circle cx="14.2" cy="18" r="1.7"/><circle cx="18.5" cy="18" r="1.7"/></g>
+          <circle cx="12" cy="27" r="3.6" fill="#2b3f9e" stroke="#000" stroke-width=".6"/>
+          <circle cx="12" cy="27" r="1.7" fill="#eceae4"/>
+        </svg><span id="modelName"></span></span>
+    </div>
     <nav class="tabs" id="tabs">
       <button type="button" data-view="presets">Presets</button>
       <button type="button" data-page="nam" hidden>NAM</button>
@@ -833,8 +871,17 @@ async function poll() {
 
 // Safe mode: nothing of the bridge that was there stays to be clicked; what the panels show is
 // built anew once a bridge is back (renderLive, renderDevices and renderSynth show them again)
+function showModel(model) {
+  if ((document.body.dataset.model || "") === model) return;
+  if (model) document.body.dataset.model = model;
+  else delete document.body.dataset.model;
+  $("model").hidden = !model;
+  $("modelName").textContent = model;
+}
+
 function renderUnavailable() {
   document.body.classList.add("unavailable");
+  showModel("");
   for (const id of ["presetPanel", "presetsAll", "arpPanel", "seqPanel", "devices"]) $(id).hidden = true;
   if (renaming) {
     renaming.close();
@@ -854,6 +901,7 @@ function renderLive() {
   const title = "MS Plus Bridge" + (state.profile ? ` · ${state.profile}` : "");   // a second bridge says which it is
   if (document.title !== title) { document.title = title; $("title").textContent = title; }
   $("dot").classList.toggle("on", state.connected);
+  showModel(state.model || "");
   $("status").textContent = state.status || "";
   // the server takes it only from the computer itself (ui.py _from_here): not offered on a phone
   $("pedalButton").hidden = state.fixed || !["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);

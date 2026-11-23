@@ -806,6 +806,14 @@ class Identity(NamedTuple):
     version: str
 
 
+# model number from the identity (as installer/zoom_ms_installer.py MODELS) -> the pedal's name
+MODELS = {0x23: "MS-50G+", 0x25: "MS-200D+", 0x26: "MS-70CDR+", 0x27: "MS-60B+", 0x28: "MS-80IR+"}
+
+
+def model_name(identity: Identity) -> Optional[str]:
+    return MODELS.get(identity.model[0] | identity.model[1] << 7)
+
+
 def parse_identity_reply(msg: Optional[bytes]) -> Optional[Identity]:
     """F0 7E <ch> 06 02 52 <family LSB MSB> <model LSB MSB> <version ASCII> F7"""
     if msg is None or len(msg) < 11 or msg[1] != 0x7E or msg[3:6] != bytes([0x06, 0x02, ZOOM]):
