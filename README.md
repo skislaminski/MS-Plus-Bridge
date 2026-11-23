@@ -72,7 +72,11 @@ A phone or tablet uses the bridge's interface in the browser:
   **https://skislaminski.github.io/MS-Plus-Bridge/webmidi/** in Chrome. It asks for the approvals and reads the pedal's device ID like
   the first start on a computer, keeps the settings in the browser and starts without internet after
   the first time. Keep the screen on and the page in front: Android pauses pages in the background.
-  iPhone and iPad cannot do this: no browser there has Web MIDI.
+- **The remote, also on iPhone and iPad (experimental, not yet tried with a real pedal):** the knobs of
+  the pedal's current preset and nothing else, without Python:
+  **https://skislaminski.github.io/MS-Plus-Bridge/webmidi/remote.html**. It needs a browser with Web
+  MIDI: on iPhone and iPad the app MIDIWeb Browser (Safari has none), on Android Chrome; the pedal on a
+  USB adapter. No learning, scenes, arpeggiator or presets – that is the bridge's.
 
 Type the address with `http://`. Brave on iOS needs "Local Network" allowed in the iOS settings.
 
@@ -113,7 +117,7 @@ KeyBand, Pluck**. **The effects are not part of this repository** – they are p
 
 ```bash
 .venv/bin/python -m unittest     # the tests run against a simulated pedal
-.venv/bin/python webmidi/sim_server.py   # the bridge for Android against it: http://127.0.0.1:8790/webmidi/?sim
+.venv/bin/python webmidi/sim_server.py   # against it in the browser: http://127.0.0.1:8790/webmidi/?sim (the remote: remote.html?sim)
 ```
 
 ## Credits

@@ -96,6 +96,10 @@ export function parseIdentityReply(msg) {
   return {deviceId: msg[6], family: [msg[6], msg[7]], model: [msg[8], msg[9]], version: ascii(msg.slice(10, -1))};
 }
 
+// model number from the identity -> the pedal's name (zoom_sysex.MODELS)
+export const MODELS = {0x23: "MS-50G+", 0x25: "MS-200D+", 0x26: "MS-70CDR+", 0x27: "MS-60B+", 0x28: "MS-80IR+"};
+export const modelName = (identity) => MODELS[identity.model[0] | identity.model[1] << 7] ?? null;
+
 // The content of a Zoom SysEx between `F0 52 00 <ID>` and `F7`, otherwise null.
 export function zoomBody(msg, deviceId) {
   if (!msg || msg.length < 6 || !startsWith(msg, [SOX, ZOOM, 0x00, deviceId])) return null;

@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#151413">
+<title>MS Plus Remote</title>
+<style>
+  /* The remote: the knobs of the pedal's current preset, from a phone or tablet, in JavaScript alone
+     (no Python, so it also runs where the bridge cannot: an iPhone or iPad in a browser with Web MIDI
+     such as MIDIWeb Browser, as well as Chrome on Android or a computer). The look and the pedals'
+     colours are those of ui.html. */
+  :root {
+    color-scheme: dark;
+    --panel: #151413; --soft: #211f1d; --card: #0e0d0c;
+    --ink: #f3f0e6; --muted: #b7b2a4; --line: rgba(243, 240, 230, .34);
+    --accent: #ee7a24; --accent-hi: #f79243; --accent-lo: #d5630f; --accent-ink: #1c0e03;
+    --blue: #6aa9df; --blue-hi: #8ec0ec; --blue-lo: #4d8fc9;
+    --lamp: #ff5433; --ok: #43d15f; --bad: #ff9a88;
+    --top: #1c1b19; --frame: #000; --rule: var(--ink);
+  }
+  /* as in ui.html (tests/test_webmidi.py keeps them the same) */
+  body[data-model="MS-50G+"] { --panel: #17181a; --soft: #24262a; --card: #0d0e10; --top: #27292d;
+    --frame: #e6e7e9; --rule: #e6e7e9; --body: #e6e7e9; --screen: #f2a0ab; --knob: #111;
+    --accent: #ee6f86; --accent-hi: #f597a8; --accent-lo: #cf4a63; --accent-ink: #2a0610; }
+  body[data-model="MS-60B+"] { --panel: #1b0c0c; --soft: #2b1414; --card: #120707; --top: #2c1010;
+    --frame: #c8221f; --rule: #e3262b; --body: #d42724; --screen: #f6a69b; --knob: #111;
+    --accent: #e3262b; --accent-hi: #f0484c; --accent-lo: #b8161b; --accent-ink: #fff; }
+  body[data-model="MS-70CDR+"] { --panel: #0b1420; --soft: #13233a; --card: #070d16; --top: #0f1e33;
+    --frame: #2b8fe0; --rule: #2b8fe0; --body: #2b8fe0; --screen: #6ff0c4; --knob: #111;
+    --accent: #2f97ea; --accent-hi: #5cb2f2; --accent-lo: #1c72bd; --accent-ink: #fff;
+    /* blue is this pedal's own colour: what learns turns the screen's green */
+    --blue: #3fd6a8; --blue-hi: #74e6c3; --blue-lo: #23ad84; }
+  body[data-model="MS-80IR+"] { --panel: #121014; --soft: #1f1b24; --card: #0a090c; --top: #1d1922;
+    --frame: #3a3640; --rule: #b98ef5; --body: #232126; --screen: #b98ef5; --knob: #c9a54e;
+    --accent: #a45cf0; --accent-hi: #bd85f5; --accent-lo: #7e36cc; --accent-ink: #fff; }
+  body[data-model="MS-200D+"] { --panel: #1a170a; --soft: #2a2512; --card: #110f05; --top: #2a240b;
+    --frame: #f0d01c; --rule: #f0d01c; --body: #f0d01c; --screen: #e4f0a6; --knob: #111;
+    --accent: #f4d320; --accent-hi: #fae36a; --accent-lo: #cfae08; --accent-ink: #1d1800; }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; min-height: 100vh; color: var(--ink); background: #000;
+         font: 15px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  main { max-width: 720px; min-height: 100vh; margin: 0 auto;
+         padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+                  max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+         background: linear-gradient(var(--top), var(--panel) 240px); border-left: 2px solid var(--frame);
+         border-right: 2px solid var(--frame); }
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px;
+           padding-bottom: 8px; margin-bottom: 12px; border-bottom: 2px solid var(--rule); }
+  .brand { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .18em; margin: 0; font-weight: 700; color: var(--muted); }
+  .model { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; letter-spacing: .14em; }
+  .model svg { width: 20px; height: 28px; flex: none; }
+  .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px;
+            letter-spacing: .08em; text-transform: uppercase; text-align: right; }
+  .dot { width: 13px; height: 13px; border-radius: 50%; flex: none; border: 1px solid #000;
+         background: radial-gradient(circle at 35% 35%, #ffd9c7, var(--lamp) 55%, #a81c08);
+         box-shadow: 0 0 10px rgba(255, 84, 51, .85); }
+  .dot.on { background: radial-gradient(circle at 35% 35%, #dcffd6, var(--ok) 55%, #14772b);
+            box-shadow: 0 0 10px rgba(67, 209, 95, .85); }
+
+  button { font: 700 13px "Helvetica Neue", Helvetica, Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase;
+           min-height: 44px; padding: 8px 16px; border-radius: 4px; border: 1px solid #000; cursor: pointer;
+           color: #16120c; background: linear-gradient(#f7f3e8, #cbc5b3); box-shadow: 0 2px 0 #000; }
+  button.primary { background: linear-gradient(var(--accent-hi), var(--accent-lo)); color: var(--accent-ink); }
+  button:disabled { opacity: .4; cursor: default; }
+  button:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 1px 0 #000; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+
+  #message { margin: 0 0 12px; color: var(--muted); }
+  #message.bad { color: var(--bad); }
+
+  .preset { display: flex; align-items: baseline; gap: 12px; padding: 10px 14px; margin-bottom: 12px;
+            background: var(--card); border: 1px solid var(--line); border-radius: 4px; }
+  .preset b { font-size: 30px; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+  .preset span { font-size: 18px; font-weight: 700; letter-spacing: .06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* the effects of the preset: one button each, the chosen one's knobs below */
+  .chain { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .chain button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 58px; padding: 8px 10px;
+                  text-transform: none; letter-spacing: 0; color: var(--ink); background: var(--soft); box-shadow: none;
+                  border: 1px solid var(--line); text-align: left; }
+  .chain button small { font-size: 10px; color: var(--muted); letter-spacing: .14em; text-transform: uppercase; }
+  .chain button span { font-size: 15px; overflow-wrap: anywhere; }
+  .chain button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .chain button.off span { color: var(--muted); }
+
+  .knobs { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 6px 12px 10px; }
+  .knobs h2 { margin: 6px 0 4px; }
+  .knob { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name value" "range range" "steps steps";
+          gap: 2px 10px; padding: 10px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+  .knob:last-child { border-bottom: 0; }
+  .knob .name { grid-area: name; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .knob output { grid-area: value; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .knob output.sent { color: var(--accent); }
+  .knob .row { grid-area: range; display: grid; grid-template-columns: 44px 1fr 44px; gap: 8px; align-items: center; }
+  .knob .row button { min-height: 40px; padding: 0; font-size: 20px; line-height: 1; }
+  .knob input[type=range] { width: 100%; height: 40px; margin: 0; accent-color: var(--accent); background: transparent; touch-action: pan-y; }
+  .empty { color: var(--muted); padding: 8px 0; }
+
+  details { margin-top: 14px; border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; }
+  summary { cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+  details label { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; }
+  details input[type=checkbox] { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--accent); }
+  code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  pre { font-size: 11px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <h1>MS Plus Remote</h1>
+      <span class="model" id="model" hidden>
+        <svg viewBox="0 0 24 34" aria-hidden="true">
+          <rect x="1" y="1" width="22" height="32" rx="3" fill="var(--body)" stroke="#000"/>
+          <rect x="5" y="4" width="14" height="10" rx="1" fill="var(--screen)" stroke="#000" stroke-width=".8"/>
+          <g fill="var(--knob)" stroke="#000" stroke-width=".5"><circle cx="5.5" cy="18" r="1.7"/><circle cx="9.8" cy="18" r="1.7"/>
+            <circle cx="14.2" cy="18" r="1.7"/><circle cx="18.5" cy="18" r="1.7"/></g>
+          <circle cx="12" cy="27" r="3.6" fill="#2b3f9e" stroke="#000" stroke-width=".6"/>
+          <circle cx="12" cy="27" r="1.7" fill="#eceae4"/>
+        </svg><span id="modelName"></span></span>
+    </div>
+    <span class="status"><span id="state">Not connected</span><i class="dot" id="dot"></i></span>
+  </header>
+
+  <div class="actions">
+    <button type="button" class="primary" id="connect">Connect pedal</button>
+    <button type="button" id="refresh" hidden>Read again</button>
+    <button type="button" id="disconnect" hidden>Disconnect</button>
+  </div>
+  <p id="message"></p>
+
+  <section id="live" hidden>
+    <div class="preset"><b id="preset">–</b><span id="patchName"></span></div>
+    <div class="chain" id="chain"></div>
+    <div class="knobs" id="knobs"></div>
+  </section>
+
+  <details id="approvalBox">
+    <summary>Approvals</summary>
+    <p>The remote sends only these messages, each after you ticked it once (as <code>probe.py approve</code>
+      on a computer). Every value it sends stays within the range the pedal's effect allows.</p>
+    <div id="approvals"></div>
+  </details>
+  <details>
+    <summary>MIDI</summary>
+    <pre id="log"></pre>
+  </details>
+</main>
+<script type="module">
+import * as zs from "./zoom_sysex.js";
+import {Pedal} from "./pedal.js";
+
+const $ = (id) => document.getElementById(id);
+const SIMULATED = new URLSearchParams(location.search).has("sim");
+const STORE = "ms-plus-webmidi-approvals";       // shared with check.html: approved once is approved for both
+const SLOT = "ms-plus-remote-slot";
+let pedal = null, access = null, table = null, slot = 0, layout = "";
+
+// --- Approvals: the backup confirmed once (rule 4), every message kind approved once (rule 5) ---
+const stored = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
+const approvals = {
+  get backupConfirmed() { return Boolean(stored().backup); },
+  isApproved: (kind) => Boolean(stored()[kind]),
+};
+const allApproved = () => approvals.backupConfirmed && Object.keys(zs.KINDS).every(approvals.isApproved);
+function showApprovals() {
+  const rows = [["backup", "I have a backup of my presets (Zoom's own editor or the bridge's installer).", ""],
+                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, kind, form])];
+  $("approvals").replaceChildren(...rows.map(([key, text, form]) => {
+    const label = document.createElement("label"), box = document.createElement("input"), span = document.createElement("span");
+    box.type = "checkbox";
+    box.checked = Boolean(stored()[key]);
+    box.addEventListener("change", () => {
+      const all = stored();
+      if (box.checked) all[key] = new Date().toISOString(); else delete all[key];
+      try { localStorage.setItem(STORE, JSON.stringify(all)); } catch { say("This browser keeps nothing: the approvals are lost on reload.", true); }
+    });
+    const code = document.createElement("code");
+    code.textContent = form;
+    span.append(text, ...(form ? [document.createElement("br"), code] : []));
+    label.append(box, span);
+    return label;
+  }));
+  $("approvalBox").open = !allApproved();
+}
+
+// --- The page ---
+const say = (text, bad = false) => { $("message").textContent = text; $("message").className = bad ? "bad" : ""; };
+const log = (line) => { const pre = $("log"); pre.textContent = (pre.textContent + line + "\n").slice(-20000); };
+const presetNumber = ({bank, program}) => String(bank * 10 + program + 1).padStart(3, "0");
+const effectName = (effect) => (zs.effect(table, effect.id) || {}).name || `Effect ${effect.id.toString(16).toUpperCase()}`;
+// what the pedal shows for a value: its text where the table has one (labels by parameter), else the number
+function valueText(effect, param, value) {
+  const labels = ((zs.effect(table, effect.id) || {}).labels || {})[param];
+  return labels && labels[value] != null ? labels[value] : String(value);
+}
+
+function showModel(model) {
+  if (model) document.body.dataset.model = model; else delete document.body.dataset.model;
+  $("model").hidden = !model;
+  $("modelName").textContent = model || "";
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.body).getPropertyValue("--panel").trim();
+}
+
+function setConnected(connected) {
+  $("dot").classList.toggle("on", connected);
+  $("state").textContent = connected ? "Connected" : "Not connected";
+  $("connect").hidden = connected;
+  $("refresh").hidden = $("disconnect").hidden = !connected;
+  $("live").hidden = !connected;
+  if (!connected) { showModel(null); layout = ""; }
+}
+
+// Builds the chain and the knobs when the preset or its effects change; otherwise only the values
+// move (a knob turned on the pedal), and not the one a finger holds.
+function show() {
+  if (!pedal || !pedal.identity) return;
+  const {preset, patch} = pedal;
+  $("preset").textContent = preset ? presetNumber(preset) : "–";
+  $("patchName").textContent = patch ? patch.name : "";
+  const effects = patch ? patch.effects : [];
+  if (slot >= effects.length) slot = 0;
+  const signature = JSON.stringify([preset, effects.map((e) => [e.id, e.enabled]), slot]);
+  if (signature !== layout) {
+    layout = signature;
+    $("chain").replaceChildren(...effects.map((effect, index) => {
+      const button = document.createElement("button"), small = document.createElement("small"), name = document.createElement("span");
+      button.type = "button";
+      button.className = (index === slot ? "on" : "") + (effect.enabled === false ? " off" : "");
+      small.textContent = `${index + 1}${effect.enabled === false ? " · off" : ""}`;
+      name.textContent = effectName(effect);
+      button.append(small, name);
+      button.addEventListener("click", () => { slot = index; try { localStorage.setItem(SLOT, String(slot)); } catch {} show(); });
+      return button;
+    }));
+    const effect = effects[slot];
+    const title = document.createElement("h2");
+    title.textContent = effect ? effectName(effect) : "";
+    const rows = effect ? zs.knobs(table, effect.id).map((knob) => knobRow(effect, knob)) : [];
+    const none = document.createElement("p");
+    none.className = "empty";
+    none.textContent = !patch ? "The pedal has not reported its effects yet." :
+                       !effect ? "This preset has no effects." : "No knobs of this effect are known.";
+    $("knobs").replaceChildren(title, ...(rows.length ? rows : [none]));
+  }
+  for (const row of $("knobs").querySelectorAll(".knob")) {
+    const effect = effects[slot], range = row.querySelector("input");
+    // not the one a finger holds, nor one whose value is still on its way to the pedal
+    if (!effect || row === held || row.querySelector("output.sent")) continue;
+    const value = effect.values[Number(range.dataset.param) - zs.MIN_PARAM];
+    if (value == null || Number(range.value) === value) continue;
+    range.value = value;
+    row.querySelector("output").textContent = valueText(effect, Number(range.dataset.param), value);
+  }
+}
+
+let held = null;                                   // the knob a finger is on
+function knobRow(effect, knob) {
+  const row = document.createElement("div"), name = document.createElement("span"), output = document.createElement("output");
+  const line = document.createElement("div"), range = document.createElement("input");
+  const down = document.createElement("button"), up = document.createElement("button");
+  const value = effect.values[knob.param - zs.MIN_PARAM] ?? 0;
+  row.className = "knob";
+  name.className = "name";
+  name.textContent = knob.name;
+  line.className = "row";
+  Object.assign(range, {type: "range", min: 0, max: knob.max, step: 1, value});
+  range.dataset.param = knob.param;
+  range.setAttribute("aria-label", knob.name);
+  output.textContent = valueText(effect, knob.param, value);
+  down.type = up.type = "button";
+  down.textContent = "−";
+  up.textContent = "+";
+  down.setAttribute("aria-label", `${knob.name} down`);
+  up.setAttribute("aria-label", `${knob.name} up`);
+  const target = slot;
+  const move = (to) => {
+    to = Math.max(0, Math.min(knob.max, to));
+    range.value = to;
+    output.textContent = valueText(effect, knob.param, to);
+    output.classList.add("sent");
+    queue(target, knob.param, to, output);
+  };
+  range.addEventListener("input", () => move(Number(range.value)));
+  range.addEventListener("pointerdown", () => { held = row; });
+  for (const end of ["pointerup", "pointercancel", "change", "blur"]) range.addEventListener(end, () => { if (held === row) held = null; });
+  down.addEventListener("click", () => move(Number(range.value) - 1));
+  up.addEventListener("click", () => move(Number(range.value) + 1));
+  line.append(down, range, up);
+  row.append(name, output, line);
+  return row;
+}
+
+// --- Sending: one knob change at a time, the latest value of each knob; the ones in between are skipped.
+// Each belongs to the chain it was made for: once the pedal has another preset or effect, it is dropped. ---
+const pending = new Map();
+let sending = false;
+function queue(target, param, value, output) {
+  if (!pedal || !pedal.patch) return output.classList.remove("sent");
+  pending.set(`${target}/${param}`, {target, param, value, output, patch: pedal.patch});
+  if (!sending) drain();
+}
+async function drain() {
+  sending = true;
+  try {
+    while (pending.size && pedal) {
+      const [key, {target, param, value, output, patch}] = pending.entries().next().value;
+      pending.delete(key);
+      if (pedal.patch !== patch) { output.classList.remove("sent"); continue; }
+      try {
+        await pedal.setKnob(target, param, value);
+        if (![...pending.keys()].includes(key)) output.classList.remove("sent");
+      } catch (error) {
+        say(error instanceof zs.NotApproved ? `Not approved: ${error.kind} – tick it under Approvals.` : `Not sent: ${error.message}`, true);
+        if (error instanceof zs.NotApproved) $("approvalBox").open = true;
+        pending.clear();
+      }
+    }
+  } finally {
+    sending = false;
+  }
+}
+
+async function midiAccess() {
+  if (SIMULATED) return (await import("./sim_midi.js")).simulatedAccess();
+  if (!navigator.requestMIDIAccess) {
+    throw new Error("This browser has no Web MIDI. On an iPhone or iPad open this page in MIDIWeb Browser " +
+                    "(App Store); on Android use Chrome.");
+  }
+  return navigator.requestMIDIAccess({sysex: true});
+}
+
+async function disconnect(why) {
+  const gone = pedal;
+  pedal = null;
+  pending.clear();
+  setConnected(false);                             // no knob to move while edit mode goes off
+  let failed = null;
+  if (gone) await gone.close().catch((error) => { failed = error; });
+  pending.clear();
+  access?.stop?.();                                // the simulated pedal's polling
+  if (access) access.onstatechange = null;
+  access = null;
+  if (failed && !why?.bad) say(`Edit mode could not be switched off (${failed.message}). Turn the pedal off and on.`, true);
+  else if (why) say(why.text, why.bad);
+}
+
+$("connect").addEventListener("click", async () => {
+  $("connect").disabled = true;
+  try {
+    if (!allApproved()) {
+      $("approvalBox").open = true;
+      throw new Error("Tick the backup and every message under Approvals first.");
+    }
+    table = table || await (await fetch("../zoom_effects.json")).json();
+    say(SIMULATED ? "Connecting to the simulated pedal …" : "Asking for MIDI access …");
+    access = await midiAccess();
+    pedal = new Pedal(access, approvals, table, {onChange: show, log});
+    await pedal.start();
+    showModel(zs.modelName(pedal.identity));
+    try { slot = Number(localStorage.getItem(SLOT)) || 0; } catch { slot = 0; }
+    setConnected(true);
+    // the pedal unplugged: its ports go away
+    access.onstatechange = (event) => {
+      if (event.port && event.port.state === "disconnected" && pedal && [pedal.input, pedal.output].includes(event.port)) {
+        disconnect({text: "The pedal is gone. Plug it in again and connect.", bad: true});
+      }
+    };
+    say(SIMULATED ? "Simulated pedal (tests/sim.py): nothing reaches a real one." :
+        `Firmware ${pedal.identity.version}. Turn a knob here or on the pedal.`);
+    show();
+  } catch (error) {
+    await disconnect();
+    say(error instanceof zs.NotApproved ? `Not approved: ${error.kind} – tick it under Approvals.` : error.message, true);
+    if (error instanceof zs.NotApproved) $("approvalBox").open = true;
+  } finally {
+    $("connect").disabled = false;
+  }
+});
+
+$("refresh").addEventListener("click", () => {
+  try {
+    pedal.send(zs.buildQueryPatch(pedal.deviceId));
+  } catch (error) {
+    say(`Not sent: ${error.message}`, true);
+  }
+});
+
+$("disconnect").addEventListener("click", () => disconnect({text: "Not connected: edit mode is off again."}));
+
+// leaving the page: edit mode off again, as far as the browser still lets the message out
+window.addEventListener("pagehide", () => {
+  if (!pedal || pedal.deviceId == null) return;
+  try { pedal.send(zs.buildEditDisable(pedal.deviceId)); } catch { /* not approved: nothing sent */ }
+});
+// back from the browser's page cache: edit mode went off on the way out, so connect anew
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted && pedal) disconnect({text: "Connect again: the page was away."});
+});
+
+showApprovals();
+setConnected(false);
+if (SIMULATED) say("Simulated pedal (tests/sim.py): nothing reaches a real one.");
+</script>
+</body>
+</html>

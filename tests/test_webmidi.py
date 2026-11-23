@@ -5,6 +5,7 @@ MS-60B+; run in Node, skipped where there is none. The bridge itself in Pyodide 
 webmidi/sim_server.py, then http://127.0.0.1:8790/webmidi/?sim in Chrome."""
 import dataclasses
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,12 @@ class Files(unittest.TestCase):
                 self.assertTrue((root / name).is_file() or (WEBMIDI / name).is_file())
         self.assertIn(effect_names.TABLE.name, loaded)
         self.assertIn(ui.PAGE.name, loaded)
+
+    def test_the_remote_has_the_pedals_colours_of_the_interface(self):
+        def colours(page: Path) -> list:
+            return re.findall(r'body\[data-model="[^"]+"\] \{[^}]*\}', page.read_text(encoding="utf-8"))
+        self.assertEqual(5, len(colours(ui.PAGE)))
+        self.assertEqual(colours(ui.PAGE), colours(WEBMIDI / "remote.html"))
 
 
 def node(script: str, data=None):
@@ -137,6 +144,13 @@ class SameBytes(unittest.TestCase):
                 self.assertEqual((effect_names.effect(effect_id) or {}).get("name"), name)
 
 
+    def test_the_models_are_named_the_same(self):
+        replies = [bytes.fromhex(f"F07E000602526E00{model:02X}00312E3230F7") for model in [*zs.MODELS, 0x7F]]
+        found = node("console.log(JSON.stringify(data.map((raw) => zs.modelName(zs.parseIdentityReply(raw)))));",
+                     [list(reply) for reply in replies])
+        self.assertEqual([zs.model_name(zs.parse_identity_reply(reply)) for reply in replies], found)
+        self.assertEqual(None, found[-1])
+
 @unittest.skipUnless(NODE, "Node.js is not installed")
 class SimulatedPedal(unittest.TestCase):
     """webmidi/pedal.js through the MIDIAccess of webmidi/sim_midi.js, the way the page uses them."""
@@ -175,6 +189,31 @@ class SimulatedPedal(unittest.TestCase):
                           "param 0 is blocked (effect on/off or effect type)"], found["refused"])
         self.assertFalse(pedal.edit_mode)
 
+
+    def test_what_changes_on_the_pedal_drops_the_old_chain_until_it_answers(self):
+        found = node(f'import {{Pedal}} from "{(WEBMIDI / "pedal.js").as_uri()}";\n'
+                     'const sent = [], input = {name: "ZOOM MS Plus Series"};\n'
+                     'const output = {name: "ZOOM MS Plus Series", send: (data) => sent.push(zs.toHex(data))};\n'
+                     'const access = {inputs: new Map([["in", input]]), outputs: new Map([["out", output]])};\n'
+                     'const table = JSON.parse(readFileSync(data.table, "utf8"));\n'
+                     'const pedal = new Pedal(access, {backupConfirmed: true, isApproved: () => true}, table);\n'
+                     'pedal.deviceId = data.id;\n'
+                     'const fill = () => pedal.setPatch(zs.parsePatchDump(zs.zoomBody(data.dump, data.id)));\n'
+                     'const steps = {};\n'
+                     'pedal.receive([0xB0, 32, 0]); pedal.receive([0xC0, 94]); fill();\n'
+                     'pedal.receive(zs.buildSetParam(data.id, 0, 0, 0));\n'
+                     'steps.off = [pedal.patch.effects[0].enabled, pedal.targets.length > 0, sent.length];\n'
+                     'pedal.receive(zs.buildSetParam(data.id, 1, 1, 7));\n'
+                     'steps.swapped = [pedal.patch, pedal.targets.length, sent.slice(-1)[0]];\n'
+                     'fill(); pedal.receive([0xB0, 32, 0]); pedal.receive([0xC0, 95]);\n'
+                     'steps.preset = [pedal.patch, pedal.targets.length, sent.slice(-1)[0], pedal.preset];\n'
+                     'console.log(JSON.stringify(steps));',
+                     {"id": ID, "table": str(effect_names.TABLE),
+                      "dump": list(sim.patch_dump([(0x01000010, (6, 1, 70, 80)), (0x01000030, 3)]))})
+        query = zs.to_hex(zs.build_query_patch(ID))
+        self.assertEqual([False, True, 0], found["off"])                    # switched off on the pedal: shown, nothing asked
+        self.assertEqual([None, 0, query], found["swapped"])                # another effect: nothing of the old one settable
+        self.assertEqual([None, 0, query, {"bank": 0, "program": 95}], found["preset"])
 
 if __name__ == "__main__":
     unittest.main()

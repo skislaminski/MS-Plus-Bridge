@@ -61,8 +61,14 @@ export class Pedal {
       const body = zs.zoomBody(raw, this.deviceId);
       const dump = zs.parsePatchDump(body), change = zs.parseParam(body);
       if (dump) this.setPatch(dump);
-      else if (change && !change.ack && this.patch && change.slot < this.patch.effects.length && change.param >= zs.MIN_PARAM) {
-        this.patch.effects[change.slot].values[change.param - zs.MIN_PARAM] = change.value;   // turned on the pedal
+      else if (change && !change.ack && this.patch && change.slot < this.patch.effects.length) {
+        if (change.param >= zs.MIN_PARAM) {
+          this.patch.effects[change.slot].values[change.param - zs.MIN_PARAM] = change.value;   // turned on the pedal
+        } else if (change.param === 0) {
+          this.patch.effects[change.slot].enabled = change.value === 1;                       // switched on the pedal
+        } else {
+          this.askPatch();            // another effect in that slot: its knobs and ranges are not the old ones
+        }
         this.onChange();
       }
     }
@@ -72,15 +78,18 @@ export class Pedal {
   setPreset(bank, program) {
     const fresh = this.preset && (this.preset.bank !== bank || this.preset.program !== program);
     this.preset = {bank, program};
+    if (fresh) this.askPatch();                         // another preset on the pedal: its effects
     this.onChange();
-    if (!fresh) return;
+  }
+
+  // The chain is not known until the pedal answers: nothing of the old one can be set meanwhile.
+  askPatch() {
+    this.patch = null;
+    this.targets = [];
     try {
-      this.send(zs.buildQueryPatch(this.deviceId));     // another preset on the pedal: its effects
-    } catch (error) {                                   // not approved: no knobs of the old chain to set
-      this.patch = null;
-      this.targets = [];
+      this.send(zs.buildQueryPatch(this.deviceId));
+    } catch (error) {                                   // not approved: no knobs to set
       this.log(`not sent: ${error.message}`);
-      this.onChange();
     }
   }
 
