@@ -18,7 +18,7 @@ from tests.sim import PROJECT, World, mapping
 from tests.test_effect_files import FILES, PRESET, ReadingCase, STOCK
 
 KEYSYNTH_FILE = PROJECT / "tests" / "files" / "KEYSYNTH.ZD2"
-N2Z, NEW = 0x04001787, 0x09000FA0
+N2Z, NEW = 0x04001787, 0x09000FFA
 MODELS = ["Fender", "Marshall", "Vox"]
 
 
@@ -128,14 +128,14 @@ class FromTheFiles(unittest.TestCase):
                              "size": 1, "labels": {"2": ["1ms", "2ms", "3ms"]}},
                 "0A000070": {"name": "HoldDelay", "knobs": [["Time", 1], ["2", 20]], "file": "HLDDLY1U.ZD2",
                              "size": 1, "labels": {"2": ["A", "B"]}},
-                "09000FA0": {"name": "NewFx", "knobs": [["Mode", 2], ["Mix", 100], ["Sync", 3]], "file": "NEWFX.ZD2",
+                "09000FFA": {"name": "NewFx", "knobs": [["Mode", 2], ["Mix", 100], ["Sync", 3]], "file": "NEWFX.ZD2",
                              "size": 1, "labels": {"2": ["Old", "Old", "Old"], "3": ["x"] * 101}}}), encoding="utf-8")
             with mock.patch.object(effect_names, "TABLE", table), contextlib.redirect_stdout(io.StringIO()):
                 effect_names.main([str(files)])
             made = json.loads(table.read_text(encoding="utf-8"))
         self.assertEqual(made["0A000020"]["labels"], {"2": ["1ms", "2ms", "3ms"]})   # the same file, the same knobs
         self.assertNotIn("labels", made["0A000070"])                                 # other knobs now
-        self.assertEqual(made["09000FA0"]["labels"], {"2": ["Up", "Down", "Both"], "3": ["x"] * 101,
+        self.assertEqual(made["09000FFA"]["labels"], {"2": ["Up", "Down", "Both"], "3": ["x"] * 101,
                                                       "4": ["Off", "1/4", "1/8", "1/16"]})   # the file's win
 
     def test_the_table_holds_them_one_list_per_line(self):
@@ -238,11 +238,11 @@ class InTheTable(unittest.TestCase):
                                                    "knobs": [["Mode", 2], ["Mix", 100], ["Sync", 1]], "labels": {
                                                        "2": ["Up", "Down", "Both"], "3": ["a", "b"], "4": ["Off", 1],
                                                        "5": ["x", "y"], "x": ["a"], "1": ["a", "b"]}},
-                                     "OTHER.ZD2": {"id": "09000FA1", "name": "Other", "size": 5, "knobs": [],
+                                     "OTHER.ZD2": {"id": "09000FFB", "name": "Other", "size": 5, "knobs": [],
                                                    "labels": ["a"]}}), encoding="utf-8")
         effect_names.use_cache(cache)
         self.assertEqual(effect_names.labels(NEW), {2: ["Up", "Down", "Both"]})
-        self.assertEqual(effect_names.effect(0x09000FA1)["name"], "Other")         # the entry stays
+        self.assertEqual(effect_names.effect(0x09000FFB)["name"], "Other")         # the entry stays
 
     def test_the_number_the_interface_asks_again_by(self):
         seen = effect_names.version()

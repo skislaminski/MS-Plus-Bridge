@@ -25,7 +25,7 @@ from tests.test_headless import HeadlessCase
 from tests.test_names import zd2
 
 STOCK, ROOM = 0x01000020, 0x0B000020                      # BlackOpt, BrghtRoom
-NEW, OTHER = 0x09000FA0, 0x09000FA1                      # custom effects the table does not know
+NEW, OTHER = 0x09000FFA, 0x09000FFB                      # custom effects the table does not know
 KEYSYNTH = 0x07000F61                                     # as installed on the pedal (tests/test_editor.py)
 PRESET = "0/94"
 REAL = json.loads((PROJECT / "tests" / "pedal_patches.json").read_text(encoding="utf-8"))["files"]
@@ -182,7 +182,7 @@ class Table(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         cache = Path(folder.name, "pedal_effects.json")
         cache.write_text(json.dumps({"A.ZD2": {"id": "zz"}, "B.ZD2": [], "C.ZD2": {
-            "id": "09000FA0", "name": "C", "knobs": [["Tone", 100]], "size": 5}}), encoding="utf-8")
+            "id": "09000FFA", "name": "C", "knobs": [["Tone", 100]], "size": 5}}), encoding="utf-8")
         effect_names.use_cache(cache)
         self.assertEqual(effect_names.by_file("C.ZD2"), NEW)
         self.assertFalse(effect_names.described("A.ZD2", None))
@@ -193,17 +193,17 @@ class Table(unittest.TestCase):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         cache = Path(folder.name, "pedal_effects.json")
-        older = {"id": "09000FA0", "name": "C", "knobs": [["Tone", 100]], "size": 5, "dsp": 10.0}
+        older = {"id": "09000FFA", "name": "C", "knobs": [["Tone", 100]], "size": 5, "dsp": 10.0}
         cache.write_text(json.dumps({"C.ZD2": older}), encoding="utf-8")
         effect_names.use_cache(cache)
         self.assertEqual(effect_names.by_file("C.ZD2"), NEW)                # taken meanwhile
         self.assertFalse(effect_names.described("C.ZD2", 5))                # … and read again
-        effect_names.remember([{"id": 0x08000FA0, "name": "C", "knobs": [["Tone", 100]], "file": "C.ZD2",
+        effect_names.remember([{"id": 0x08000FFA, "name": "C", "knobs": [["Tone", 100]], "file": "C.ZD2",
                                 "size": 5, "dsp": 10.0}])
         self.assertTrue(effect_names.described("C.ZD2", 5))
         effect_names.use_cache(cache)                                       # the next start
         self.assertTrue(effect_names.described("C.ZD2", 5))
-        self.assertEqual(effect_names.by_file("C.ZD2"), 0x08000FA0)
+        self.assertEqual(effect_names.by_file("C.ZD2"), 0x08000FFA)
 
     def test_a_synth_effect_is_played_as_the_build_read_from_the_next_start(self):
         knobs = [["Key", 1000], ["Level", 100], ["Wave1", 3], ["Wave2", 4]]
@@ -370,7 +370,7 @@ class Failing(ReadingCase):
     def test_the_installer_opened_meanwhile_ends_the_reading(self):
         # a bridge without --workshop beside the Zoom MS Installer started on its own: no further file
         names = [f"NEWF{number}.ZD2" for number in range(4)]
-        data = {name: effect_file(0x09000FA0 + number, f"Fx{number}") for number, name in enumerate(names)}
+        data = {name: effect_file(0x09000FFA + number, f"Fx{number}") for number, name in enumerate(names)}
         opened, read_one = threading.Event(), bridge.Session._read_effect_file
 
         def read_then_open(session, name, size):

@@ -88,8 +88,8 @@ class Table(unittest.TestCase):
         self.assertIsNone(effect_names.dsp(0x0F000123))
 
     def test_the_dsp_of_the_tables_effects_set_from_their_files_and_nothing_else(self):
-        made = {"09000FA0": {"name": "NewFx", "knobs": [["Tone", 100]], "file": "NEWFX.ZD2", "size": 0},
-                "09000FA1": {"name": "Other", "knobs": [], "file": "OTHER.ZD2", "size": 1, "labels": {"2": ["A", "B"]}},
+        made = {"09000FFA": {"name": "NewFx", "knobs": [["Tone", 100]], "file": "NEWFX.ZD2", "size": 0},
+                "09000FFB": {"name": "Other", "knobs": [], "file": "OTHER.ZD2", "size": 1, "labels": {"2": ["A", "B"]}},
                 "09000FA2": {"name": "Gone", "knobs": [], "file": "GONE.ZD2", "size": 1, "dsp": 9.5}}
         with tempfile.TemporaryDirectory() as folder:
             paths = {}
@@ -100,11 +100,11 @@ class Table(unittest.TestCase):
                 path.write_bytes(with_dsp(zd2(NEW, "NewFx", [("Tone", 100)]), load) + bytes(extra))
                 paths[place, name] = path
                 os.utime(path, (when, when))
-            made["09000FA0"]["size"] = paths["a", "NEWFX.ZD2"].stat().st_size       # the older one is of its size
+            made["09000FFA"]["size"] = paths["a", "NEWFX.ZD2"].stat().st_size       # the older one is of its size
             before = json.loads(json.dumps(made))
             said = []
             done = effect_names.set_dsp(made, [folder], say=said.append)
-            self.assertEqual(done, {"09000FA0": paths["a", "NEWFX.ZD2"], "09000FA1": paths["b", "OTHER.ZD2"]})
+            self.assertEqual(done, {"09000FFA": paths["a", "NEWFX.ZD2"], "09000FFB": paths["b", "OTHER.ZD2"]})
             self.assertEqual([made[key].get("dsp") for key in made], [40.0, 61.0, 9.5])   # the newest of its name
             self.assertEqual({key: {name: value for name, value in entry.items() if name != "dsp"}
                               for key, entry in made.items()},
@@ -165,8 +165,8 @@ class Cache(unittest.TestCase):
 
     def test_a_dsp_that_is_no_load_is_left_out_with_its_entry(self):
         entry = {"name": "X", "knobs": [], "size": 100}
-        self.cache.write_text(json.dumps({"A.ZD2": dict(entry, id="09000FA0", dsp="55"),
-                                          "B.ZD2": dict(entry, id="09000FA1", dsp=-1),
+        self.cache.write_text(json.dumps({"A.ZD2": dict(entry, id="09000FFA", dsp="55"),
+                                          "B.ZD2": dict(entry, id="09000FFB", dsp=-1),
                                           "C.ZD2": dict(entry, id="09000FA2", dsp=True),
                                           "D.ZD2": dict(entry, id="09000FA3", dsp=52)}), encoding="utf-8")
         effect_names.use_cache(self.cache)
