@@ -1147,9 +1147,17 @@ function effectPicture(id, name, size) {
   box.title = name || "";
   const asName = () => { box.classList.add("none"); box.textContent = name || "?"; };
   if (!id || performance.now() - (missingPictures.get(id) ?? -Infinity) < PICTURE_AGAIN) { asName(); return box; }
-  const image = Object.assign(document.createElement("img"), {src: `/api/picture?id=${encodeURIComponent(id)}`, alt: "",
-                                                             loading: "lazy", decoding: "async"});
-  image.addEventListener("error", () => { missingPictures.set(id, performance.now()); image.remove(); asName(); });
+  const url = `/api/picture?id=${encodeURIComponent(id)}`;
+  const image = Object.assign(document.createElement("img"), {alt: "", loading: "lazy", decoding: "async"});
+  const failed = () => { missingPictures.set(id, performance.now()); image.remove(); asName(); };
+  image.addEventListener("error", failed);
+  if (window.answeredByParent) {             // on a phone without a server (webmidi/): no address an <img> could load
+    fetch(url).then((response) => response.ok ? response.blob() : Promise.reject())
+      .then((picture) => { image.src = URL.createObjectURL(picture); image.onload = () => URL.revokeObjectURL(image.src); })
+      .catch(failed);
+  } else {
+    image.src = url;
+  }
   box.append(image);
   return box;
 }

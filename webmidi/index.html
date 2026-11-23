@@ -93,7 +93,7 @@ window.bridgeFetch = async (request, init = {}) => {
 
 function showInterface() {
   const page = py.FS.readFile(`${ROOT}/ui.html`, {encoding: "utf8"});
-  $("ui").srcdoc = page.replace("<head>", "<head><script>window.fetch = (...request) => parent.bridgeFetch(...request);<\/script>");
+  $("ui").srcdoc = page.replace("<head>", "<head><script>window.fetch = (...request) => parent.bridgeFetch(...request); window.answeredByParent = true;<\/script>");
   $("ui").hidden = false;
   $("launcher").hidden = true;
 }
@@ -189,6 +189,7 @@ $("start").addEventListener("click", async () => {
       .map(async ([url, name]) => {
         const response = await fetch(url, {cache: "no-cache"});
         if (!response.ok) throw new Error(`${url} could not be loaded (${response.status})`);
+        if (name.includes("/")) py.FS.mkdirTree(`${ROOT}/${name.slice(0, name.lastIndexOf("/"))}`);   // effect_icons/
         py.FS.writeFile(`${ROOT}/${name}`, new Uint8Array(await response.arrayBuffer()));
       }));
     py.FS.mount(py.FS.filesystems.IDBFS, {}, HOME);

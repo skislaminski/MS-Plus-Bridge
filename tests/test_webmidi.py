@@ -41,6 +41,9 @@ class Files(unittest.TestCase):
                 self.assertTrue((root / name).is_file() or (WEBMIDI / name).is_file())
         self.assertIn(effect_names.TABLE.name, loaded)
         self.assertIn(ui.PAGE.name, loaded)
+        # the pictures of our effects come along: the phone has no backup of the installer to take them from
+        self.assertEqual({name for name in loaded if name.startswith("effect_icons/")},
+                         {f"effect_icons/{path.name}" for path in (root / "effect_icons").glob("*.ZIC")})
 
     def test_the_remote_has_the_pedals_colours_of_the_interface(self):
         def colours(page: Path) -> list:
