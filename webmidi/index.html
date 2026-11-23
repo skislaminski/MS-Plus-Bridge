@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MS Plus Bridge – Web MIDI</title>
+<style>
+  /* A prototype: the pedal straight from the phone's browser (Chrome on Android, USB-OTG). The
+     colours are those of ui.html. */
+  :root { color-scheme: dark; --panel: #151413; --ink: #f3f0e6; --muted: #b7b2a4; --line: rgba(243, 240, 230, .34);
+          --accent: #ee7a24; --ok: #43d15f; --bad: #ff9a88; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #000; color: var(--ink); font: 15px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 12px 16px 28px; background: var(--panel); min-height: 100vh; }
+  h1 { font-size: 17px; letter-spacing: .14em; text-transform: uppercase; margin: 4px 0 10px;
+       padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+  h2 { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; margin: 16px 0 6px; color: var(--muted); }
+  button { font: inherit; padding: 10px 16px; border-radius: 4px; border: 0; background: var(--accent); color: #1c0e03;
+           font-weight: 700; min-height: 44px; }
+  button:disabled { opacity: .4; }
+  label { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+  code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  #status { margin: 10px 0; color: var(--muted); }
+  #status.bad { color: var(--bad); }
+  .effect { border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; margin: 8px 0; }
+  .knob { display: grid; grid-template-columns: 5.5em 1fr 3em 1.2em; gap: 8px; align-items: center; margin: 6px 0; }
+  .knob input { width: 100%; }
+  .ok { color: var(--ok); }
+  pre { font-size: 11px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>MS Plus Bridge · Web MIDI</h1>
+<details id="approvalBox">
+  <summary>Approvals (as approvals.json)</summary>
+  <div id="approvals"></div>
+</details>
+<p>
+  <button id="connect">Connect pedal</button>
+  <button id="disconnect" disabled>Disconnect</button>
+</p>
+<div id="status">Not connected.</div>
+<div id="chain"></div>
+<h2>MIDI</h2>
+<pre id="log"></pre>
+</main>
+<script type="module">
+import * as zs from "./zoom_sysex.js";
+import {Pedal} from "./pedal.js";
+
+const $ = (id) => document.getElementById(id);
+const SIMULATED = new URLSearchParams(location.search).has("sim");
+const STORE = "ms-plus-webmidi-approvals";
+let pedal = null, table = null;
+
+// --- Approvals: the backup confirmed once (rule 4), every message kind approved once (rule 5) ---
+const stored = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
+const approvals = {
+  get backupConfirmed() { return Boolean(stored().backup); },
+  isApproved: (kind) => Boolean(stored()[kind]),
+};
+function showApprovals() {
+  const rows = [["backup", "I have a backup of my presets (Zoom's own editor or the bridge's installer).", ""],
+                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, kind, form])];
+  $("approvals").replaceChildren(...rows.map(([key, text, form]) => {
+    const label = document.createElement("label"), box = document.createElement("input"), span = document.createElement("span");
+    box.type = "checkbox";
+    box.checked = Boolean(stored()[key]);
+    box.addEventListener("change", () => {
+      const all = stored();
+      if (box.checked) all[key] = new Date().toISOString(); else delete all[key];
+      try { localStorage.setItem(STORE, JSON.stringify(all)); } catch { say("This browser keeps nothing: approvals are lost on reload.", true); }
+    });
+    const code = document.createElement("code");
+    code.textContent = form;
+    span.append(text, ...(form ? [document.createElement("br"), code] : []));
+    label.append(box, span);
+    return label;
+  }));
+  $("approvalBox").open = !(approvals.backupConfirmed && Object.keys(zs.KINDS).every(approvals.isApproved));
+}
+
+// --- The page ---
+const say = (text, bad = false) => { $("status").textContent = text; $("status").className = bad ? "bad" : ""; };
+const log = (line) => { const pre = $("log"); pre.textContent = (pre.textContent + line + "\n").slice(-20000); pre.scrollTop = 1e9; };
+const presetNumber = ({bank, program}) => String(bank * 10 + program + 1).padStart(3, "0");
+
+function show() {
+  if (!pedal) return $("chain").replaceChildren();
+  const {identity, preset, patch} = pedal;
+  say(`Firmware ${identity.version}, device ID ${identity.deviceId.toString(16).toUpperCase()}` +
+      (preset ? ` · preset ${presetNumber(preset)}` : "") + (patch ? ` · “${patch.name}”` : ""));
+  if (!patch) return $("chain").replaceChildren();
+  $("chain").replaceChildren(...patch.effects.map((effect, slot) => {
+    const box = document.createElement("div"), title = document.createElement("h2");
+    box.className = "effect";
+    title.textContent = `${slot + 1} · ${(zs.effect(table, effect.id) || {}).name || effect.id.toString(16)}` +
+                        (effect.enabled === false ? " (off)" : "");
+    box.append(title, ...zs.knobs(table, effect.id).map((knob) => knobRow(slot, knob, effect.values[knob.param - zs.MIN_PARAM])));
+    return box;
+  }));
+}
+
+function knobRow(slot, knob, value) {
+  const row = document.createElement("div"), name = document.createElement("span"), range = document.createElement("input");
+  const number = document.createElement("span"), mark = document.createElement("span");
+  row.className = "knob";
+  name.textContent = knob.name;
+  Object.assign(range, {type: "range", min: 0, max: knob.max, value: value ?? 0});
+  range.setAttribute("aria-label", `${knob.name}, effect ${slot + 1}`);
+  number.textContent = range.value;
+  range.addEventListener("input", () => { number.textContent = range.value; mark.textContent = ""; });
+  range.addEventListener("change", async () => {
+    try {
+      const confirmed = await pedal.setKnob(slot, knob.param, Number(range.value));
+      mark.textContent = confirmed ? "✓" : "–";
+      mark.className = confirmed ? "ok" : "";
+      mark.title = confirmed ? "The pedal confirmed it." : "No confirmation (the pedal confirms only a change).";
+    } catch (error) {
+      say(`Not sent: ${error.message}`, true);
+    }
+  });
+  row.append(name, range, number, mark);
+  return row;
+}
+
+async function midiAccess() {
+  if (SIMULATED) return (await import("./sim_midi.js")).simulatedAccess();
+  if (!navigator.requestMIDIAccess) {
+    throw new Error("This browser has no Web MIDI. On Android use Chrome; on an iPhone or iPad every browser is Safari underneath, which has none.");
+  }
+  return navigator.requestMIDIAccess({sysex: true});
+}
+
+$("connect").addEventListener("click", async () => {
+  $("connect").disabled = true;
+  let access = null;
+  try {
+    table = table || await (await fetch("../zoom_effects.json")).json();
+    say(SIMULATED ? "Connecting to the simulated pedal …" : "Asking for MIDI access …");
+    access = await midiAccess();
+    pedal = new Pedal(access, approvals, table, {onChange: show, log});
+    await pedal.start();
+    show();
+    $("disconnect").disabled = false;
+  } catch (error) {
+    say(error instanceof zs.NotApproved ? `Not approved: ${error.kind} – tick it under Approvals.` : error.message, true);
+    if (error instanceof zs.NotApproved) $("approvalBox").open = true;
+    if (pedal) await pedal.close().catch(() => {});
+    access?.stop?.();       // the simulated pedal's polling
+    pedal = null;
+    $("connect").disabled = false;
+  }
+});
+
+$("disconnect").addEventListener("click", async () => {
+  $("disconnect").disabled = true;
+  await pedal.close();
+  pedal.access.stop?.();
+  pedal = null;
+  show();
+  say("Not connected: edit mode is off again.");
+  $("connect").disabled = false;
+});
+
+showApprovals();
+if (SIMULATED) say("Simulated pedal (tests/sim.py): nothing reaches a real one.");
+</script>
+</body>
+</html>
