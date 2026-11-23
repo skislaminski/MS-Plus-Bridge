@@ -1098,8 +1098,7 @@ def review_checks(tmp, fx):
 
     check("every MS Plus model with a stock list is known by its number",
           all(len(m.stock_catalog(m.MODELS[n][1])) > 30
-              for n in (0x23, 0x26, 0x27, 0x28))
-          and m.MODELS[0x25] == ("MS-200D+", None))
+              for n in (0x23, 0x25, 0x26, 0x27, 0x28)))
 
     # unknown model: nothing on the pedal is replaced without --force
     mock = fresh(tmp, model=0x30)

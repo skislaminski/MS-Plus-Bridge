@@ -79,9 +79,8 @@ PORT_NAMES = ("ZOOM MS Plus Series", "ZOOM G")
 # (the numbers as zoom-explorer by thammer lists them)
 MODELS = {
     0x23: ("MS-50G+", "ms-50gp"),
-    # no list of its stock effects is known yet (zoom-zt2 has none), so it is
-    # treated like an unknown model: nothing is removed without --force
-    0x25: ("MS-200D+", None),
+    # its list from Zoom's archive (HGL_for_MS200D_Plus, MD5 of the files there)
+    0x25: ("MS-200D+", "ms-200dp"),
     0x26: ("MS-70CDR+", "ms-70cdrp"),
     0x27: ("MS-60B+", "ms-60bp"),
     0x28: ("MS-80IR+", "ms-80irp"),

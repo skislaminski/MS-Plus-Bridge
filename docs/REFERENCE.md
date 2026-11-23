@@ -272,10 +272,9 @@ effects* in the installer's tab, `zoom_ms_installer.py remove --stock`): never t
 category, and only when a backup of the pedal holds the file as it was read. A factory reset does
 not bring them back; *Bring back* (`restore-stock`) writes Zoom's original file back from that
 backup, unchanged, at the end of its category (or, with `--from FOLDER`, a file of Zoom's whose
-MD5 is the one in `effects_sort.txt`). This works on the MS-50G+, MS-60B+, MS-70CDR+ and MS-80IR+,
-whose lists of stock effects come with the installer (from zoom-zt2); only the MS-60B+ has been
-tried. The MS-200D+ is recognized, but no list of its stock effects is known yet, so the installer
-removes nothing on it. Stopped with Ctrl+C during a transfer, the program ends once
+MD5 is the one in `effects_sort.txt`). This works on all five MS Plus pedals, whose lists of stock
+effects come with the installer (from zoom-zt2; the MS-200D+'s from Zoom's own archive of its
+effects, whose files match those read from the pedal); only the MS-60B+ has been tried. Stopped with Ctrl+C during a transfer, the program ends once
 the transfer is done. If the bridge itself cannot start (its settings, another pedal's device
 ID, the setup in its terminal cancelled), the installer runs on its own and opens in the browser. A standalone Zoom MS Installer that
 is open when the bridge starts keeps the pedal; then the tabs are missing. **IR Loader** is the IR
