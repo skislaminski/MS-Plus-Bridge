@@ -1,14 +1,18 @@
-"""The Web MIDI prototype (webmidi/): its SysEx byte for byte as zoom_sysex.py's, its allowlist
-refusing whatever the Python one refuses, and its way to the pedal against the simulated MS-60B+.
-Run in Node; skipped where there is none."""
+"""The bridge in a phone's browser (webmidi/): the page loads every file of the program the bridge
+needs. And the MIDI check (webmidi/check.html): its SysEx byte for byte as zoom_sysex.py's, its
+allowlist refusing whatever the Python one refuses, its way to the pedal against the simulated
+MS-60B+; run in Node, skipped where there is none. The bridge itself in Pyodide is tried by hand:
+webmidi/sim_server.py, then http://127.0.0.1:8790/webmidi/?sim in Chrome."""
 import dataclasses
 import json
 import shutil
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
 import effect_names
+import ui
 import zoom_sysex as zs
 from tests import sim
 from webmidi import sim_server
@@ -18,6 +22,24 @@ WEBMIDI = Path(__file__).resolve().parent.parent / "webmidi"
 ID = sim.ID
 TARGETS = [zs.ParamTarget(slot=0, param=4, min=0, max=100), zs.ParamTarget(slot=2, param=3, min=10, max=150)]
 JS_KINDS = ("identity_request", "edit_enable", "edit_disable", "set_param", "query_program", "query_patch")
+
+
+class Files(unittest.TestCase):
+    def test_the_page_loads_every_module_and_file_the_bridge_needs(self):
+        root = WEBMIDI.parent
+        loaded = set(json.loads((WEBMIDI / "files.json").read_text(encoding="utf-8")))
+        # what importing them alone loads of the program, as webmidi/browser.py does (not what other tests loaded)
+        used = set(json.loads(subprocess.run(
+            [sys.executable, "-c", "import json, sys, pathlib, bridge, probe, ui; print(json.dumps(["
+             "pathlib.Path(m.__file__).name for m in list(sys.modules.values()) if getattr(m, '__file__', None)"
+             " and pathlib.Path(m.__file__).resolve().parent == pathlib.Path.cwd()]))"],
+            cwd=root, capture_output=True, text=True, check=True).stdout))
+        self.assertEqual(set(), used - loaded)
+        for name in loaded | {"mido_webmidi.py", "browser.py"}:
+            with self.subTest(name):
+                self.assertTrue((root / name).is_file() or (WEBMIDI / name).is_file())
+        self.assertIn(effect_names.TABLE.name, loaded)
+        self.assertIn(ui.PAGE.name, loaded)
 
 
 def node(script: str, data=None):

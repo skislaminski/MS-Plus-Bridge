@@ -1,8 +1,9 @@
-"""Serves the Web MIDI prototype (webmidi/) with the simulated MS-60B+ of tests/sim.py behind
-/sim/: the page opened with ?sim talks to it instead of a pedal. For development only; it never
-opens a MIDI port. http://127.0.0.1 counts as a secure context, as Web MIDI needs.
+"""Serves the bridge for the phone's browser (webmidi/) with the simulated MS-60B+ of tests/sim.py
+behind /sim/: a page opened with ?sim talks to it instead of a pedal. For development only; it
+never opens a MIDI port. http://127.0.0.1 counts as a secure context, as Web MIDI needs.
 
     .venv/bin/python webmidi/sim_server.py [port]     → http://127.0.0.1:8790/webmidi/?sim
+                                                        (the MIDI check: /webmidi/check.html?sim)
 """
 from __future__ import annotations
 
@@ -23,6 +24,8 @@ import mido  # noqa: E402
 from tests import sim  # noqa: E402
 
 DEFAULT_PORT = 8790          # not the bridge's 8765
+# what is served besides webmidi/: the program's files the page loads, not the settings beside them
+SERVED = {f"/{name}" for name in json.loads((ROOT / "webmidi" / "files.json").read_text(encoding="utf-8"))}
 CHAIN = (0x01000010, 0x01000030)          # DYN Comp and OptComp, from zoom_effects.json
 
 
@@ -35,7 +38,7 @@ def world() -> sim.World:
 
 
 def serve(pedal: sim.World, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
-    """Starts the server in a background thread: webmidi/ and zoom_effects.json, and /sim/."""
+    """Starts the server in a background thread: webmidi/, the files it loads, and /sim/."""
     lock = threading.Lock()
 
     class Handler(SimpleHTTPRequestHandler):
@@ -58,7 +61,7 @@ def serve(pedal: sim.World, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
                     answers = [list(message.bytes()) for message in pedal.zoom_queue]
                     pedal.zoom_queue.clear()
                 self._json(answers)
-            elif path in ("/zoom_effects.json", "/webmidi") or path.startswith("/webmidi/"):    # nothing else
+            elif path in SERVED or path == "/webmidi" or path.startswith("/webmidi/"):    # nothing else
                 super().do_GET()
             else:
                 self.send_error(404)

@@ -3,169 +3,203 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MS Plus Bridge – Web MIDI</title>
+<title>MS Plus Bridge</title>
 <style>
-  /* A prototype: the pedal straight from the phone's browser (Chrome on Android, USB-OTG). The
-     colours are those of ui.html. */
-  :root { color-scheme: dark; --panel: #151413; --ink: #f3f0e6; --muted: #b7b2a4; --line: rgba(243, 240, 230, .34);
-          --accent: #ee7a24; --ok: #43d15f; --bad: #ff9a88; }
+  /* The bridge on a phone without a computer: Python (Pyodide) runs bridge.py here, the pedal is on
+     USB-OTG and reached through Web MIDI, the interface is ui.html as on the computer. */
+  :root { color-scheme: dark; --panel: #151413; --ink: #f3f0e6; --muted: #b7b2a4; --accent: #ee7a24; --bad: #ff9a88; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: #000; color: var(--ink); font: 15px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; }
-  main { max-width: 640px; margin: 0 auto; padding: 12px 16px 28px; background: var(--panel); min-height: 100vh; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--ink);
+               font: 15px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 12px 16px 28px; background: var(--panel); min-height: 100%; }
   h1 { font-size: 17px; letter-spacing: .14em; text-transform: uppercase; margin: 4px 0 10px;
        padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
-  h2 { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; margin: 16px 0 6px; color: var(--muted); }
   button { font: inherit; padding: 10px 16px; border-radius: 4px; border: 0; background: var(--accent); color: #1c0e03;
            font-weight: 700; min-height: 44px; }
   button:disabled { opacity: .4; }
-  label { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+  label { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; }
   code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-  #status { margin: 10px 0; color: var(--muted); }
+  #status { margin: 12px 0; color: var(--muted); white-space: pre-wrap; }
   #status.bad { color: var(--bad); }
-  .effect { border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; margin: 8px 0; }
-  .knob { display: grid; grid-template-columns: 5.5em 1fr 3em 1.2em; gap: 8px; align-items: center; margin: 6px 0; }
-  .knob input { width: 100%; }
-  .ok { color: var(--ok); }
-  pre { font-size: 11px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
+  iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
 </style>
 </head>
 <body>
-<main>
-<h1>MS Plus Bridge · Web MIDI</h1>
-<details id="approvalBox">
-  <summary>Approvals (as approvals.json)</summary>
-  <div id="approvals"></div>
-</details>
-<p>
-  <button id="connect">Connect pedal</button>
-  <button id="disconnect" disabled>Disconnect</button>
-</p>
-<div id="status">Not connected.</div>
-<div id="chain"></div>
-<h2>MIDI</h2>
-<pre id="log"></pre>
+<main id="launcher">
+  <h1>MS Plus Bridge</h1>
+  <div id="status">Loading …</div>
+  <form id="approvals" hidden>
+    <p>The bridge sends only the kinds of message you approve.</p>
+    <div id="kinds"></div>
+    <button type="submit">Save approvals</button>
+  </form>
+  <p><button id="start" disabled>Connect pedal and start</button></p>
 </main>
+<iframe id="ui" title="MS Plus Bridge" hidden></iframe>
 <script type="module">
-import * as zs from "./zoom_sysex.js";
-import {Pedal} from "./pedal.js";
-
+const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.28.0/full/";
+const ROOT = "/bridge", HOME = `${ROOT}/profiles/phone`;    // bridge.use_profile("phone"), kept in the browser
+const SIMULATED = new URLSearchParams(location.search).has("sim");     // tests/sim.py through sim_server.py
 const $ = (id) => document.getElementById(id);
-const SIMULATED = new URLSearchParams(location.search).has("sim");
-const STORE = "ms-plus-webmidi-approvals";
-let pedal = null, table = null;
+let py = null, browser = null, syncing = Promise.resolve(), running = false;
 
-// --- Approvals: the backup confirmed once (rule 4), every message kind approved once (rule 5) ---
-const stored = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
-const approvals = {
-  get backupConfirmed() { return Boolean(stored().backup); },
-  isApproved: (kind) => Boolean(stored()[kind]),
+const say = (text, bad = false) => { $("status").textContent = text; $("status").className = bad ? "bad" : ""; };
+
+// --- The MIDI ports for mido_webmidi.py ---
+window.webmidi = {
+  access: null,
+  queues: new Map(),         // input name → what it received since the bridge last looked
+  ports() {
+    const list = [];
+    for (const [isInput, ports] of [[true, this.access.inputs], [false, this.access.outputs]]) {
+      for (const port of ports.values()) if (port.state !== "disconnected") list.push([port.name, isInput]);
+    }
+    return list;
+  },
+  // shortcut: two devices of the same name are one port here; a second pedal needs a computer
+  find(ports, name) {
+    for (const port of ports.values()) if (port.name === name && port.state !== "disconnected") return port;
+    throw new Error(`the MIDI port ${name} is gone`);
+  },
+  openInput(name) {
+    const queue = [];
+    this.queues.set(name, queue);
+    this.find(this.access.inputs, name).onmidimessage = (event) => queue.push(Array.from(event.data));
+  },
+  take(name) {
+    const queue = this.queues.get(name);
+    if (!queue) throw new Error(`the MIDI port ${name} is not open`);
+    return queue.splice(0);
+  },
+  closeInput(name) {
+    this.queues.delete(name);
+    try { this.find(this.access.inputs, name).onmidimessage = null; } catch { /* gone already */ }
+  },
+  openOutput(name) { this.find(this.access.outputs, name); },
+  send(name, data) { this.find(this.access.outputs, name).send(data); },
 };
+
+// --- The interface: ui.html as it is, its requests answered by ui.answer instead of a server ---
+window.bridgeFetch = async (request, init = {}) => {
+  const url = new URL(request instanceof Request ? request.url : request, location.href);
+  if (!url.pathname.startsWith("/api/")) return fetch(request, init);
+  const body = typeof init.body === "string" ? init.body : "";
+  const [status, data, type, filename, cache] = await browser.request.callPromising(
+    init.method || "GET", url.pathname + url.search, body);
+  const headers = {"Content-Type": type, "Cache-Control": cache};
+  if (filename) headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+  return new Response(data, {status, headers});
+};
+
+function showInterface() {
+  const page = py.FS.readFile(`${ROOT}/ui.html`, {encoding: "utf8"});
+  $("ui").srcdoc = page.replace("<head>", "<head><script>window.fetch = (...request) => parent.bridgeFetch(...request);<\/script>");
+  $("ui").hidden = false;
+  $("launcher").hidden = true;
+}
+
+// --- Settings, approvals and the pedal's device ID: kept in the browser's storage (IndexedDB) ---
+function sync(populate = false) {
+  syncing = syncing.then(() => new Promise((resolve) => py.FS.syncfs(populate, (error) => {
+    if (error) console.warn("settings not stored", error);
+    resolve();
+  })));
+  return syncing;
+}
+
 function showApprovals() {
-  const rows = [["backup", "I have a backup of my presets (Zoom's own editor or the bridge's installer).", ""],
-                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, kind, form])];
-  $("approvals").replaceChildren(...rows.map(([key, text, form]) => {
+  const given = browser.approvals();
+  const ready = given.backup && given.required.every((kind) => given.approved.includes(kind));
+  const rows = [["backup", "The presets of the pedal are backed up (Zoom's own editor, or the installer of the bridge on a computer).", "", given.backup],
+                ...Object.entries(given.kinds).map(([kind, form]) => [
+                  kind, kind + (given.required.includes(kind) ? " (needed to start)" : ""), form, given.approved.includes(kind)])];
+  $("kinds").replaceChildren(...rows.map(([key, text, form, done]) => {
     const label = document.createElement("label"), box = document.createElement("input"), span = document.createElement("span");
-    box.type = "checkbox";
-    box.checked = Boolean(stored()[key]);
-    box.addEventListener("change", () => {
-      const all = stored();
-      if (box.checked) all[key] = new Date().toISOString(); else delete all[key];
-      try { localStorage.setItem(STORE, JSON.stringify(all)); } catch { say("This browser keeps nothing: approvals are lost on reload.", true); }
-    });
     const code = document.createElement("code");
+    Object.assign(box, {type: "checkbox", name: key, checked: done, disabled: done});
     code.textContent = form;
     span.append(text, ...(form ? [document.createElement("br"), code] : []));
     label.append(box, span);
     return label;
   }));
-  $("approvalBox").open = !(approvals.backupConfirmed && Object.keys(zs.KINDS).every(approvals.isApproved));
+  $("approvals").hidden = ready && given.approved.length === Object.keys(given.kinds).length;
+  $("start").disabled = !ready;
+  if (!ready) say("First the approvals: what the bridge may send to the pedal.");
+  else say(SIMULATED ? "Simulated pedal (tests/sim.py): nothing reaches a real one." : "Plug the pedal in (USB-OTG), then start.");
 }
 
-// --- The page ---
-const say = (text, bad = false) => { $("status").textContent = text; $("status").className = bad ? "bad" : ""; };
-const log = (line) => { const pre = $("log"); pre.textContent = (pre.textContent + line + "\n").slice(-20000); pre.scrollTop = 1e9; };
-const presetNumber = ({bank, program}) => String(bank * 10 + program + 1).padStart(3, "0");
+$("approvals").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const ticked = [...$("kinds").querySelectorAll("input:checked:not(:disabled)")].map((box) => box.name);
+  browser.approve(ticked.includes("backup"), ticked.filter((name) => name !== "backup"));
+  await sync();
+  showApprovals();
+});
 
-function show() {
-  if (!pedal) return $("chain").replaceChildren();
-  const {identity, preset, patch} = pedal;
-  say(`Firmware ${identity.version}, device ID ${identity.deviceId.toString(16).toUpperCase()}` +
-      (preset ? ` · preset ${presetNumber(preset)}` : "") + (patch ? ` · “${patch.name}”` : ""));
-  if (!patch) return $("chain").replaceChildren();
-  $("chain").replaceChildren(...patch.effects.map((effect, slot) => {
-    const box = document.createElement("div"), title = document.createElement("h2");
-    box.className = "effect";
-    title.textContent = `${slot + 1} · ${(zs.effect(table, effect.id) || {}).name || effect.id.toString(16)}` +
-                        (effect.enabled === false ? " (off)" : "");
-    box.append(title, ...zs.knobs(table, effect.id).map((knob) => knobRow(slot, knob, effect.values[knob.param - zs.MIN_PARAM])));
-    return box;
-  }));
+// --- Start ---
+async function keepAwake() {
+  try { await navigator.wakeLock?.request("screen"); } catch { /* not granted: the screen may go dark */ }
 }
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && running) keepAwake();
+  else if (py) sync();
+});
 
-function knobRow(slot, knob, value) {
-  const row = document.createElement("div"), name = document.createElement("span"), range = document.createElement("input");
-  const number = document.createElement("span"), mark = document.createElement("span");
-  row.className = "knob";
-  name.textContent = knob.name;
-  Object.assign(range, {type: "range", min: 0, max: knob.max, value: value ?? 0});
-  range.setAttribute("aria-label", `${knob.name}, effect ${slot + 1}`);
-  number.textContent = range.value;
-  range.addEventListener("input", () => { number.textContent = range.value; mark.textContent = ""; });
-  range.addEventListener("change", async () => {
-    try {
-      const confirmed = await pedal.setKnob(slot, knob.param, Number(range.value));
-      mark.textContent = confirmed ? "✓" : "–";
-      mark.className = confirmed ? "ok" : "";
-      mark.title = confirmed ? "The pedal confirmed it." : "No confirmation (the pedal confirms only a change).";
-    } catch (error) {
-      say(`Not sent: ${error.message}`, true);
-    }
-  });
-  row.append(name, range, number, mark);
-  return row;
-}
-
-async function midiAccess() {
-  if (SIMULATED) return (await import("./sim_midi.js")).simulatedAccess();
-  if (!navigator.requestMIDIAccess) {
-    throw new Error("This browser has no Web MIDI. On Android use Chrome; on an iPhone or iPad every browser is Safari underneath, which has none.");
-  }
-  return navigator.requestMIDIAccess({sysex: true});
-}
-
-$("connect").addEventListener("click", async () => {
-  $("connect").disabled = true;
-  let access = null;
+$("start").addEventListener("click", async () => {
+  $("start").disabled = true;
   try {
-    table = table || await (await fetch("../zoom_effects.json")).json();
     say(SIMULATED ? "Connecting to the simulated pedal …" : "Asking for MIDI access …");
-    access = await midiAccess();
-    pedal = new Pedal(access, approvals, table, {onChange: show, log});
-    await pedal.start();
-    show();
-    $("disconnect").disabled = false;
+    if (!SIMULATED && !navigator.requestMIDIAccess) {
+      throw new Error("This browser has no Web MIDI. On Android use Chrome; on an iPhone or iPad every browser is Safari underneath, which has none.");
+    }
+    webmidi.access = SIMULATED ? (await import("./sim_midi.js")).simulatedAccess()
+                               : await navigator.requestMIDIAccess({sysex: true});
+    say("Starting the bridge …");
+    const problem = await browser.start.callPromising();
+    await sync();
+    if (problem) throw new Error(problem);
+    running = true;
+    keepAwake();
+    setInterval(sync, 3000);
+    showInterface();
+    await browser.run.callPromising();      // for good, unless the bridge stops
+    throw new Error("The bridge stopped.");
   } catch (error) {
-    say(error instanceof zs.NotApproved ? `Not approved: ${error.kind} – tick it under Approvals.` : error.message, true);
-    if (error instanceof zs.NotApproved) $("approvalBox").open = true;
-    if (pedal) await pedal.close().catch(() => {});
-    access?.stop?.();       // the simulated pedal's polling
-    pedal = null;
-    $("connect").disabled = false;
+    running = false;
+    $("ui").hidden = true;
+    $("launcher").hidden = false;
+    say(String(error.message || error), true);
+    $("start").disabled = false;
   }
 });
 
-$("disconnect").addEventListener("click", async () => {
-  $("disconnect").disabled = true;
-  await pedal.close();
-  pedal.access.stop?.();
-  pedal = null;
-  show();
-  say("Not connected: edit mode is off again.");
-  $("connect").disabled = false;
-});
-
-showApprovals();
-if (SIMULATED) say("Simulated pedal (tests/sim.py): nothing reaches a real one.");
+(async () => {
+  try {
+    navigator.storage?.persist?.();          // the settings are not to be cleared when space runs short
+    navigator.serviceWorker?.register("sw.js").catch((error) => console.warn("no offline copy", error));
+    say("Loading Python (about 6 MB the first time) …");
+    const {loadPyodide} = await import(PYODIDE + "pyodide.mjs");
+    py = await loadPyodide({indexURL: PYODIDE});
+    await py.loadPackage(["micropip", "pyyaml"]);
+    await py.pyimport("micropip").install("mido==1.3.3");
+    say("Loading the bridge …");
+    const files = await (await fetch("files.json", {cache: "no-cache"})).json();
+    py.FS.mkdirTree(HOME);
+    await Promise.all([...files.map((name) => [`../${name}`, name]), ...["mido_webmidi.py", "browser.py"].map((name) => [name, name])]
+      .map(async ([url, name]) => {
+        const response = await fetch(url, {cache: "no-cache"});
+        if (!response.ok) throw new Error(`${url} could not be loaded (${response.status})`);
+        py.FS.writeFile(`${ROOT}/${name}`, new Uint8Array(await response.arrayBuffer()));
+      }));
+    py.FS.mount(py.FS.filesystems.IDBFS, {}, HOME);
+    await sync(true);
+    py.runPython(`import os, sys; sys.path.insert(0, "${ROOT}"); os.chdir("${ROOT}")`);
+    browser = py.pyimport("browser");
+    showApprovals();
+  } catch (error) {
+    say(`The bridge could not be loaded: ${error.message || error}`, true);
+  }
+})();
 </script>
 </body>
 </html>

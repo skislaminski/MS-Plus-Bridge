@@ -1,0 +1,3 @@
+["arpeggiator.py", "bridge.py", "config_schema.py", "effect_names.py", "effect_pictures.py", "effect_switch.py",
+ "probe.py", "scenes.py", "sequencer.py", "status_led.py", "synth_controls.py", "ui.py", "zoom_sysex.py",
+ "zoom_effects.json", "zoom_effects_other.json", "config.example.yaml", "ui.html"]

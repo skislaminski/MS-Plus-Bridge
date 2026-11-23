@@ -163,6 +163,9 @@ CURVES = {
 
 EVENTS: deque = deque(maxlen=8)   # latest status lines, for the interface
 HEADLESS = False                  # run from a settings file: lines go to the log only (the service's journal)
+# In a phone's browser (Pyodide, webmidi/): no threads, and a lock or Event that waits holds the whole
+# page; time.sleep lets it run on (and the main loop with it)
+BROWSER = sys.platform == "emscripten"
 
 
 class Disconnected(Exception):
@@ -3054,6 +3057,14 @@ class Session:
         return self.effect_change is not None or self.preset_save is not None or self.name_wanted is not None
 
 
+def _sleep_until(event: threading.Event, timeout: float) -> bool:
+    """event.wait(timeout) in a browser, where only time.sleep lets the main loop set it."""
+    deadline = time.monotonic() + timeout
+    while not event.is_set() and time.monotonic() < deadline:
+        time.sleep(0.001)
+    return event.is_set()
+
+
 def installer_holds(folder: Path) -> Optional[str]:
     """Why the Zoom MS Installer has the pedal now, or None. Its alarm file is there while it
     writes to the pedal and after a transfer it could not verify; until its rescue clears it the
@@ -3219,7 +3230,8 @@ class Bridge:
         waiting = False
         self.installer = installer_holds(INSTALLER_DATA)   # before the first connection, not a moment after
         watching = threading.Event()
-        threading.Thread(target=self._watch_installer, args=(watching,), daemon=True).start()
+        if not BROWSER:                                     # no installer beside it there
+            threading.Thread(target=self._watch_installer, args=(watching,), daemon=True).start()
         try:
             while True:
                 now = time.monotonic()
@@ -3343,7 +3355,7 @@ class Bridge:
         """Runs function() in the main loop; returns {"result": …} or {"error": text}."""
         done, box = threading.Event(), {}
         self.commands.put((function, done, box))
-        if not done.wait(timeout):
+        if not (_sleep_until(done, timeout) if BROWSER else done.wait(timeout)):
             box["late"] = True                  # not run when the loop gets to it: the person was told it failed
             return {"error": "The bridge is not responding right now."}
         return box

@@ -61,12 +61,18 @@ pedal once, step by step: **[Quick start](QUICKSTART.md)**.
 
 ## On a phone or tablet
 
-iPhone, iPad and Android cannot run the bridge, but they use its interface in the browser:
+A phone or tablet uses the bridge's interface in the browser:
 
 - **With a computer:** set `listen: true` under `ui:` in `config.yaml` (or start with `--listen`).
   The bridge shows the address to open, e.g. `http://192.168.1.20:8765`. Anyone in that WLAN can then
   use it – only do this in your own WLAN.
 - **With a Raspberry Pi:** join the Pi's WLAN "MS Plus Bridge" and open `http://10.42.0.1`.
+- **Android without a computer (experimental, not yet tried with a real pedal):** Chrome on Android runs
+  the bridge itself, the pedal on a USB-OTG adapter. Open the page `webmidi/` of this repository over
+  HTTPS (for example from GitHub Pages). It asks for the approvals and reads the pedal's device ID like
+  the first start on a computer, keeps the settings in the browser and starts without internet after
+  the first time. Keep the screen on and the page in front: Android pauses pages in the background.
+  iPhone and iPad cannot do this: no browser there has Web MIDI.
 
 Type the address with `http://`. Brave on iOS needs "Local Network" allowed in the iOS settings.
 
@@ -107,6 +113,7 @@ KeyBand, Pluck**. **The effects are not part of this repository** – they are p
 
 ```bash
 .venv/bin/python -m unittest     # the tests run against a simulated pedal
+.venv/bin/python webmidi/sim_server.py   # the bridge for Android against it: http://127.0.0.1:8790/webmidi/?sim
 ```
 
 ## Credits
