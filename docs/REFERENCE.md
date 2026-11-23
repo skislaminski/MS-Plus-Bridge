@@ -862,6 +862,17 @@ from learned controllers. It uses the messages of the expression pedal and the e
   [Switching effects on and off](#switching-effects-on-and-off).
 - Scenes are kept in `controls.json` and travel with the backup ("Export…") and the file for the Pi.
 
+**Scenes kept by the pedal itself** (a modified firmware, not released yet): scene A and B in
+every preset, which a short press on the pedal switches. When the pedal answers the bridge's
+question for them, "Scenes" shows them above the bridge's own: *Read from pedal* loads A and B
+of the preset on the pedal; a click on an effect's number goes through "–" (not part of the
+scene), "on" and "off"; *Add a knob* puts a knob of the chain with its value in (never a Key
+knob of a synth effect). The line above them says which preset they come from and whether
+there are unsaved changes. *Write to pedal* stores them only into that preset, while it is on
+the pedal, and reads them back: only the same as written counts as done. The messages are not
+agreed with the firmware yet ([PEDAL_SCENES.md](PEDAL_SCENES.md)); until then the bridge does not
+ask, and offers its own scenes as before.
+
 ## When effects move
 
 The parameters of a preset, the values and switches of its scenes, and the ranges learned for

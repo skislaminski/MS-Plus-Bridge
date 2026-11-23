@@ -30,6 +30,7 @@ import yaml
 
 import bridge
 import effect_names
+import pedal_scenes
 import probe
 import ui
 import zoom_sysex as zs
@@ -168,6 +169,14 @@ class World:
         self.session_end_delay = 0.0
         self.empty_end = False
         self.refused = False                  # the last open was refused: the next status says -1
+        # a firmware that keeps scene A and B in every preset (pedal_scenes.py, in its PROVISIONAL form)
+        self.scene_support = False            # False: it does not answer the scene messages at all
+        self.pedal_scenes = {}                # (bank, program) → its scenes as bytes; unset: two empty ones
+        self.scene_most = 8                   # the values a scene holds at most, as it answers the question
+        self.scene_answers = True             # False: it answers the question, then nothing about its scenes
+        self.scene_status = 0                 # its answer to a write (0: done)
+        self.scene_store = None               # what it keeps of scenes written to it (bytes → bytes), if not them
+        self.scene_delay = 0.0                # how long it takes to answer reading or writing
         self.zoom_queue, self.controller_queue, self.keyboard_queue, self.external_queue = [], [], [], []
         self.sent = []                        # (seconds, hex) of every SysEx sent to the pedal
         self.channel_messages = []            # everything else sent to the pedal
@@ -372,6 +381,9 @@ class World:
             if stored is not None:
                 self.stored[stored[:2]] = stored[3]
                 self.zoom_queue.append(sysex(ACK))
+        elif pedal_scenes.COMMAND is not None and raw[4] == pedal_scenes.COMMAND:
+            if self.scene_support:
+                self.on_scenes(raw[5:-1])
         elif raw[4] == 0x33:
             self.report_preset()
         elif raw[4] == zs.PATCH_UPLOAD:          # a patch into the edit buffer: its effects, in their order
@@ -412,6 +424,32 @@ class World:
             if self.acks and self.edit_mode and value != held:
                 self.zoom_queue.append(sysex(raw[:6] + b"\x01" + raw[7:]))
             self.values[key] = value
+
+    def on_scenes(self, body: bytes) -> None:
+        """A scene message (pedal_scenes.py): the question, reading or writing scene A and B of a preset."""
+        def reply(*data: int) -> None:
+            message = sysex(bytes([0xF0, 0x52, 0x00, ID, pedal_scenes.COMMAND, *data, 0xF7]))
+            if self.scene_delay and data[0] != pedal_scenes.QUERY:
+                self.script.append((self.now() + self.scene_delay, lambda world: world.zoom_queue.append(message)))
+                self.script.sort(key=lambda item: item[0])
+            else:
+                self.zoom_queue.append(message)
+        if body == bytes([pedal_scenes.QUERY]):
+            reply(pedal_scenes.QUERY, 1, self.scene_most)
+            return
+        if not self.scene_answers or len(body) < 5:
+            return
+        address, place = body[1:5], (body[1] | body[2] << 7, body[3] | body[4] << 7)
+        if not zs.is_preset(*place):
+            reply(body[0], 1, *address)
+        elif body[0] == pedal_scenes.READ:
+            reply(pedal_scenes.READ, 0, *address,
+                  *self.pedal_scenes.get(place, pedal_scenes.encode(pedal_scenes.empty())))
+        elif body[0] == pedal_scenes.WRITE:
+            if not self.scene_status:
+                data = bytes(body[5:])
+                self.pedal_scenes[place] = self.scene_store(data) if self.scene_store else data
+            reply(pedal_scenes.WRITE, self.scene_status, *address)
 
     @property
     def params(self) -> list:

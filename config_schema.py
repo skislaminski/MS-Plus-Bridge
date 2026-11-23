@@ -282,7 +282,7 @@ def validate(data) -> list:
         if not approvals.get("backup_confirmed"):
             add("approvals: the backup of the patches has not been confirmed (python probe.py approve).")
         for kind in approvals["messages"]:
-            if kind not in zs.KINDS:
+            if not zs.known_kind(kind):
                 add(f"approvals: “{kind}” is not a message kind of the bridge.")
         switching = data.get("effects") or (isinstance(data.get("scenes"), dict) and any(
             isinstance(scene, dict) and scene.get("effects")

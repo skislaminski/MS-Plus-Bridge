@@ -396,6 +396,13 @@
   form.in-place input { flex: 0 1 30ch; min-width: 0; margin: 0; padding: 1px 6px; font-size: 16px; font-weight: 700;
                         letter-spacing: .04em; }
   .part-head { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  /* the pedal's own scenes A and B: where they come from, unsaved changes, read and write */
+  .pedal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .pedal-head span { flex: 1 1 200px; font-size: 13px; }
+  .pedal-head span b { color: var(--accent); }
+  .pedal-result { font-size: 12px; color: var(--muted); margin: 2px 0 6px; }
+  .pedal-result.failed { color: var(--accent); }
+  .knob.fx button.slot-switch { min-width: 52px; font-size: 11px; padding: 3px 6px; }
   /* which MIDI port each device is */
   .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr)); gap: 6px 10px; }
   #message { position: sticky; top: 8px; z-index: 2; padding: 8px 12px; border-radius: 4px; margin-bottom: 8px;
@@ -573,6 +580,18 @@
       <details class="part" id="scenesPart" data-panel="scenes" open>
         <summary><h3>Scenes</h3><span class="sum" id="scenesStatus"></span></summary>
         <div class="part-body">
+          <!-- scene A and B kept in the preset by the pedal itself, when its firmware does -->
+          <div id="pedalScenes" hidden>
+            <div class="pedal-head">
+              <span id="pedalSource"></span>
+              <button type="button" id="pedalRead">Read from pedal</button>
+              <button type="button" id="pedalWrite" class="primary">Write to pedal</button>
+              <button type="button" id="pedalDiscard">Discard changes</button>
+            </div>
+            <p class="pedal-result" id="pedalResult"></p>
+            <div class="knobs one" id="pedalRows"></div>
+            <p class="pedal-result">The bridge's own scenes (recalled by a controller):</p>
+          </div>
           <div class="part-head"><button type="button" id="sceneAdd">Add scene</button></div>
           <div class="knobs one" id="sceneRows"></div>
         </div>
@@ -934,6 +953,7 @@ function renderLive() {
 
   renderSynth();
   renderScenes();
+  renderPedalScenes();
   renderEffects();
   syncEditorValues();
 
@@ -1344,6 +1364,85 @@ function renderScenes() {
   if (signature === sceneSignature || typing) return;        // rebuilding on every poll would swallow clicks
   sceneSignature = signature;
   $("sceneRows").replaceChildren(...scenes.list.map((scene, index) => sceneRow(scene, index, scenes)));
+}
+
+// Scene A and B the pedal keeps in the preset itself (only when its firmware says so): read them, set
+// which effects each switches and which knobs it sets – only those chosen here –, write them back
+let pedalSignature = "";
+function renderPedalScenes() {
+  const pedal = state.scenes.pedal;
+  $("pedalScenes").hidden = !pedal;
+  if (!pedal) return;
+  const here = !!pedal.place && pedal.place.key === currentKey();
+  $("pedalSource").replaceChildren(pedal.place
+    ? Object.assign(document.createElement("span"), {textContent: `Scenes A and B of preset ${pedal.place.display}`
+        + (here ? "" : " (not the one on the pedal now)")})
+    : "Scenes A and B kept by the pedal: not read yet");
+  if (pedal.dirty) $("pedalSource").append(" · ", Object.assign(document.createElement("b"), {textContent: "unsaved changes"}));
+  $("pedalRead").disabled = !state.connected || !state.patch || !pedal.read || !!pedal.busy;
+  $("pedalRead").title = pedal.read ? "Load scene A and B of the preset on the pedal" : "Reading them is not approved";
+  $("pedalWrite").disabled = !state.connected || !here || !pedal.dirty || !pedal.write || !!pedal.busy;
+  $("pedalWrite").title = here ? "Store these scenes in this preset on the pedal, then read them back"
+    : "Only into the preset they were read from, while it is on the pedal";
+  $("pedalDiscard").disabled = !pedal.dirty || !!pedal.busy;
+  const result = $("pedalResult");
+  result.textContent = pedal.busy ? (pedal.busy === "write" ? "Writing and reading back …" : "Reading …")
+    : pedal.result ? pedal.result.text : "";
+  result.className = "pedal-result" + (pedal.result && !pedal.result.ok && !pedal.busy ? " failed" : "");
+  const signature = JSON.stringify([pedal.scenes, pedal.choices, here, state.connected, chainShape()]);
+  const typing = $("pedalRows").contains(document.activeElement) && ["INPUT", "SELECT"].includes(document.activeElement.tagName);
+  if (signature === pedalSignature || typing) return;
+  pedalSignature = signature;
+  $("pedalRows").replaceChildren(...(pedal.scenes ? ["A", "B"].map((name) => pedalSceneRow(name, pedal, here)) : []));
+}
+
+function pedalSceneRow(name, pedal, here) {
+  const scene = pedal.scenes[name];
+  const key = currentKey();
+  const send = (action, more) => samePreset(key) ? post("/api/scenes", {action, scene: name, ...more}) : null;
+  const row = document.createElement("div");
+  row.className = "knob fx";
+  row.append(Object.assign(document.createElement("b"), {textContent: `Scene ${name}`}));
+  // each effect: not part of the scene (–), switched on, or switched off – a click goes round
+  const switches = document.createElement("div");
+  switches.className = "chips";
+  for (let slot = 0; slot < 6; slot++) {
+    const held = scene.effects.find((effect) => effect.slot === slot);
+    const button = makeButton(`${slot + 1} ${held ? (held.on ? "on" : "off") : "–"}`,
+                              "slot-switch" + (held && held.on ? " primary" : ""),
+                              () => send("pedal_switch", {slot, on: held ? (held.on ? false : null) : true}));
+    button.title = `${effectName(slot)}: ${held ? (held.on ? "switched on" : "switched off") : "not part of the scene"} – click to change`;
+    button.disabled = !here || !!pedal.busy;
+    switches.append(button);
+  }
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  for (const value of scene.values) {
+    const chip = makeButton(`${value.label} → ${value.away ? value.value : knobText(value.slot, value.param, value.value)}`,
+                            value.away ? "chip away" : "chip", () => send("pedal_drop", {slot: value.slot, param: value.param}));
+    chip.title = "Take this knob out of the scene"
+      + (value.away ? " – another effect is in that place now, so the pedal leaves it" : "");
+    chip.disabled = !here || !!pedal.busy;
+    chips.append(chip);
+  }
+  row.append(switches, chips);
+  if (!here) return row;
+  // a knob of the chain to set (no Key knob: that is played) and its value
+  const choose = document.createElement("select");
+  choose.append(new Option("Add a knob …", ""), ...pedal.choices.map((choice, index) => new Option(choice.name, index)));
+  const amount = Object.assign(document.createElement("input"), {type: "number", min: 0, value: 0, title: "Its value"});
+  amount.style.width = "6ch";
+  choose.addEventListener("change", () => {
+    const choice = pedal.choices[choose.value];
+    if (choice) amount.max = choice.max;
+  });
+  const add = makeButton("Add", "", () => {
+    const choice = pedal.choices[choose.value];
+    if (choice) send("pedal_value", {slot: choice.slot, param: choice.param, value: Number(amount.value)});
+  });
+  add.disabled = choose.disabled = !!pedal.busy || scene.values.length >= pedal.most;
+  row.append(choose, amount, add);
+  return row;
 }
 
 const makeButton = (text, className, onClick) => {
@@ -2499,6 +2598,16 @@ $("sceneAdd").addEventListener("click", () => {
   const name = prompt("Name of the scene (for example Solo):");
   if (name && name.trim()) post("/api/scenes", {action: "add", name: name.trim()});
 });
+$("pedalRead").addEventListener("click", () => {
+  const pedal = state.scenes.pedal;
+  if (pedal && pedal.dirty && !confirm("Read the scenes from the pedal? The changes not written yet are lost.")) return;
+  post("/api/scenes", {action: "pedal_read"});
+});
+$("pedalWrite").addEventListener("click", () => {
+  const pedal = state.scenes.pedal;
+  if (pedal && pedal.place && samePreset(pedal.place.key)) post("/api/scenes", {action: "pedal_write"});
+});
+$("pedalDiscard").addEventListener("click", () => post("/api/scenes", {action: "pedal_discard"}));
 // Export: a backup of everything to bring back with "Import…", or the settings file for the Pi
 // (its card, or a USB stick put into the running Pi; not offered by the Pi itself)
 $("pedalButton").addEventListener("click", async (event) => {

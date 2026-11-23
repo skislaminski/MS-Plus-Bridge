@@ -539,6 +539,10 @@ def classify(msg: bytes, device_id: Optional[int] = None,
         raise NotAllowed(f"no Zoom header for device ID {device_id:02X}: {to_hex(msg)}")
 
     body = msg[4:-1]
+    import pedal_scenes                  # the firmware's scenes: nothing while their bytes are not agreed
+    scene_kind = pedal_scenes.classify(body)
+    if scene_kind:
+        return scene_kind
     if listing and body in FILE_LIST_BODIES:
         return "read_pedal"
     if listing and file_name and EFFECT_FILE.fullmatch(file_name) and (
@@ -718,6 +722,13 @@ class Measurements:
 
 # --- Approvals ---
 
+def known_kind(kind: str) -> bool:
+    """A message kind of the bridge: one of the allowlist, or one of the pedal's scenes (not offered
+    for approval while their bytes are not agreed with the firmware: pedal_scenes.KINDS)."""
+    import pedal_scenes
+    return kind in KINDS or kind in pedal_scenes.KINDS
+
+
 class Approvals:
     """Persistent approvals: backup confirmation (rule 4) and message kinds (rule 5)."""
 
@@ -739,7 +750,7 @@ class Approvals:
         return kind in self._data["messages"]
 
     def approve(self, kind: str) -> None:
-        if kind not in KINDS:
+        if not known_kind(kind):
             raise ValueError(f"unknown message kind: {kind}")
         self._data["messages"][kind] = time.strftime("%Y-%m-%d %H:%M:%S")
         self._save()
