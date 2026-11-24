@@ -10,7 +10,7 @@ The short way to a running bridge. Everything in detail: [README](README.md).
 - A **Zoom MS-60B+** (firmware 1.20), connected by USB. The other MS Plus pedals (MS-50G+,
   MS-70CDR+, MS-200D+) are **experimental**: untested, use them only with your patches backed up.
   An MS-50G+ needs firmware 1.30 or newer, older ones have no MIDI over USB.
-- A **computer** with Python 3.9 or newer (macOS, Windows or Linux) – or a **Raspberry Pi**.
+- A **computer** with Python 3.9 or newer (macOS, Windows or Linux; on Windows 3.9 to 3.12, best 3.12) – or a **Raspberry Pi**.
 - Optional: a **foot controller with an expression pedal** that sends a MIDI CC (e.g. M-Vave
   Chocolate Plus, Line 6 Helix), a **MIDI keyboard**, a **phone or tablet** for the interface.
 

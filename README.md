@@ -41,7 +41,7 @@ own commands.
 ## What you need
 
 - A **Zoom MS-60B+** on USB.
-- A **computer** with Python 3.9 or newer – macOS, Windows or Linux – or a **Raspberry Pi** (tested: Pi 4).
+- A **computer** with Python 3.9 or newer (on Windows 3.9 to 3.12) – macOS, Windows or Linux – or a **Raspberry Pi** (tested: Pi 4).
 - Optional: a **foot controller** whose expression pedal sends a MIDI CC (tested: M-Vave Chocolate Plus),
   a **MIDI keyboard** (tested: Komplete Kontrol A61), a **phone or tablet**.
 

@@ -163,15 +163,18 @@ You need **Python 3.9 or newer** and this repository: click the green **Code** b
 
 Nobody has run this on Windows yet, so expect rough edges and please report what you find.
 
-1. Install Python from [python.org](https://www.python.org/downloads/). Version 3.11 or newer is
-   recommended: older versions sleep in coarse steps on Windows (typically about 16 ms), which
-   makes the bridge less responsive.
+1. Install **Python 3.12** from [python.org](https://www.python.org/downloads/) (3.11 works too).
+   Not newer: the MIDI package python-rtmidi comes ready-made for Windows only up to Python 3.12,
+   and with 3.13 or later pip tries to compile it and stops with "Unknown compiler(s)" unless
+   Visual Studio's C++ compiler is installed. A newer Python may stay installed beside it;
+   `Start Bridge.bat` takes 3.12 by itself. Older than 3.11 works but sleeps in coarse steps on
+   Windows (typically about 16 ms), which makes the bridge less responsive.
 2. Open the unpacked folder in Explorer, type `cmd` into the address bar and press Enter. A
    terminal opens in that folder.
 3. Create the environment:
 
    ```bat
-   py -3 -m venv .venv
+   py -3.12 -m venv .venv
    .venv\Scripts\python -m pip install -r requirements.txt
    ```
 
