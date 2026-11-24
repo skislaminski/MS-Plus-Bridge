@@ -30,7 +30,7 @@ import yaml
 
 import bridge
 import effect_names
-import pedal_scenes
+import pedal_firmware as pf
 import probe
 import ui
 import zoom_sysex as zs
@@ -169,14 +169,21 @@ class World:
         self.session_end_delay = 0.0
         self.empty_end = False
         self.refused = False                  # the last open was refused: the next status says -1
-        # a firmware that keeps scene A and B in every preset (pedal_scenes.py, in its PROVISIONAL form)
-        self.scene_support = False            # False: it does not answer the scene messages at all
+        # a modified firmware (pedal_firmware.py, in its PROVISIONAL form): what it does, as it answers the question
+        self.features = 0                     # 0: Zoom's own, which answers none of these messages
+        self.version = 20
+        self.scene_most = 0                   # the values a scene holds at most (0: only the switches)
+        self.target_most = 6                  # the expression targets of a preset at most …
+        self.expression_cc = 11               # … and the controller that moves them
         self.pedal_scenes = {}                # (bank, program) → its scenes as bytes; unset: two empty ones
-        self.scene_most = 8                   # the values a scene holds at most, as it answers the question
-        self.scene_answers = True             # False: it answers the question, then nothing about its scenes
+        self.pedal_targets = {}               # (bank, program) → its targets as bytes; unset: none
+        self.active = {}                      # (bank, program) → (scene 0/1/2, differs) as it reports it
+        self.scene_answers = True             # False: it answers the question, then nothing about its presets
         self.scene_status = 0                 # its answer to a write (0: done)
-        self.scene_store = None               # what it keeps of scenes written to it (bytes → bytes), if not them
+        self.scene_store = None               # what it keeps of what is written to it (bytes → bytes), if not that
         self.scene_delay = 0.0                # how long it takes to answer reading or writing
+        self.answer_address = None            # (bank, program) its answers name, if not the one asked for
+        self.answer_garbled = False           # True: its answer to reading holds what is not scenes or targets
         self.zoom_queue, self.controller_queue, self.keyboard_queue, self.external_queue = [], [], [], []
         self.sent = []                        # (seconds, hex) of every SysEx sent to the pedal
         self.channel_messages = []            # everything else sent to the pedal
@@ -381,9 +388,9 @@ class World:
             if stored is not None:
                 self.stored[stored[:2]] = stored[3]
                 self.zoom_queue.append(sysex(ACK))
-        elif pedal_scenes.COMMAND is not None and raw[4] == pedal_scenes.COMMAND:
-            if self.scene_support:
-                self.on_scenes(raw[5:-1])
+        elif pf.COMMAND is not None and raw[4] == pf.COMMAND:
+            if self.features:
+                self.on_firmware(raw[5:-1])
         elif raw[4] == 0x33:
             self.report_preset()
         elif raw[4] == zs.PATCH_UPLOAD:          # a patch into the edit buffer: its effects, in their order
@@ -425,31 +432,53 @@ class World:
                 self.zoom_queue.append(sysex(raw[:6] + b"\x01" + raw[7:]))
             self.values[key] = value
 
-    def on_scenes(self, body: bytes) -> None:
-        """A scene message (pedal_scenes.py): the question, reading or writing scene A and B of a preset."""
-        def reply(*data: int) -> None:
-            message = sysex(bytes([0xF0, 0x52, 0x00, ID, pedal_scenes.COMMAND, *data, 0xF7]))
-            if self.scene_delay and data[0] != pedal_scenes.QUERY:
-                self.script.append((self.now() + self.scene_delay, lambda world: world.zoom_queue.append(message)))
-                self.script.sort(key=lambda item: item[0])
-            else:
-                self.zoom_queue.append(message)
-        if body == bytes([pedal_scenes.QUERY]):
-            reply(pedal_scenes.QUERY, 1, self.scene_most)
+    def firmware_says(self, *data: int, delay: float = 0.0) -> None:
+        message = sysex(bytes([0xF0, 0x52, 0x00, ID, pf.COMMAND, *data, 0xF7]))
+        if delay:
+            self.script.append((self.now() + delay, lambda world: world.zoom_queue.append(message)))
+            self.script.sort(key=lambda item: item[0])
+        else:
+            self.zoom_queue.append(message)
+
+    def press_scene(self, scene: int, differs: bool = False, place=None) -> None:
+        """The player switches scene (1 = A, 2 = B; 0: none clearly holds) with a short press: the
+        pedal reports it for the preset on it (or for place)."""
+        place = place or (self.bank, self.program)
+        self.active[place] = (scene, differs)
+        self.firmware_says(pf.ACTIVE, *pf._place(*place), scene, int(differs))
+
+    def on_firmware(self, body: bytes) -> None:
+        """A message for the firmware (pedal_firmware.py): a question, or reading or writing the scenes
+        or expression targets of a preset."""
+        if body == bytes([pf.QUERY]):
+            self.firmware_says(pf.QUERY, self.version, self.scene_most, self.features)
+            return
+        if body == bytes([pf.ACTIVE]):
+            place = (self.bank, self.program)
+            self.firmware_says(pf.ACTIVE, *pf._place(*place), *self.active.get(place, (0, 0)))
+            return
+        if body == bytes([pf.EXPRESSION]):
+            self.firmware_says(pf.EXPRESSION, self.target_most, self.expression_cc)
             return
         if not self.scene_answers or len(body) < 5:
             return
-        address, place = body[1:5], (body[1] | body[2] << 7, body[3] | body[4] << 7)
+        place = (body[1] | body[2] << 7, body[3] | body[4] << 7)
+        address = pf._place(*(self.answer_address or place))
+        reply = lambda *data: self.firmware_says(*data, delay=self.scene_delay)
+        stores = {pf.READ: (self.pedal_scenes, pf.encode(pf.empty())), pf.WRITE: (self.pedal_scenes, None),
+                  pf.READ_TARGETS: (self.pedal_targets, pf.encode_targets([])), pf.WRITE_TARGETS: (self.pedal_targets, None)}
+        if body[0] not in stores:
+            return
+        kept, none = stores[body[0]]
         if not zs.is_preset(*place):
             reply(body[0], 1, *address)
-        elif body[0] == pedal_scenes.READ:
-            reply(pedal_scenes.READ, 0, *address,
-                  *self.pedal_scenes.get(place, pedal_scenes.encode(pedal_scenes.empty())))
-        elif body[0] == pedal_scenes.WRITE:
+        elif body[0] in (pf.READ, pf.READ_TARGETS):
+            reply(body[0], 0, *address, *(b"\x7f\x01" if self.answer_garbled else kept.get(place, none)))
+        else:
             if not self.scene_status:
                 data = bytes(body[5:])
-                self.pedal_scenes[place] = self.scene_store(data) if self.scene_store else data
-            reply(pedal_scenes.WRITE, self.scene_status, *address)
+                kept[place] = self.scene_store(data) if self.scene_store else data
+            reply(body[0], self.scene_status, *address)
 
     @property
     def params(self) -> list:

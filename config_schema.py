@@ -56,14 +56,17 @@ MAX_BEND_RANGE = 12
 SECTIONS = {
     "ports": {"zoom", "chocolate"},
     "zoom": {"device_id", "firmware"},
-    "expression": {"cc", "channel", "min", "max", "invert"},
+    "expression": {"cc", "channel", "min", "max", "invert", "via"},
     "bridge": {"min_interval_ms", "deadband", "passthrough"},
     "ui": {"port", "listen"},
     "synth": {"keyboard", "channel", "external", "external_channel", "effect_id", "poly_effect_id", "low_note",
-              "high_note", "sustain", "bend_range"},
+              "high_note", "sustain", "bend_range", "via"},
     "pi": {"wlan_name", "wlan_password"},          # the Pi's own WLAN, where no other one is around
 }
 OPTIONAL = ("ui", "synth", "pi")
+# which way the keyboard's notes and the expression pedal go to the pedal: the bridge's own (Key knobs,
+# parameter messages), or as MIDI to a firmware that plays the synth and keeps expression targets itself
+ROUTES = ("bridge", "pedal")
 WLAN_NAME = re.compile(r"[ -~]{1,32}")                 # what a phone shows, printable ASCII
 WLAN_PASSWORD = re.compile(r"[ -~]{8,63}")             # WPA2
 EFFECT_ID = re.compile(r"[0-9A-Fa-f]{8}")               # an effect as the pedal's patch names it, in hex
@@ -162,6 +165,8 @@ def validate(data) -> list:
         add("expression: min and max must be numbers from 0 to 127, with min below max.")
     if not isinstance(expression.get("invert"), bool):
         add("expression: invert must be true or false.")
+    if expression.get("via", "bridge") not in ROUTES:
+        add("expression: via must be bridge or pedal.")
 
     wlan = data.get("pi") or {}
     if "wlan_name" in wlan and not (isinstance(wlan["wlan_name"], str) and WLAN_NAME.fullmatch(wlan["wlan_name"])):
@@ -199,6 +204,8 @@ def validate(data) -> list:
             add("synth: low_note and high_note must be notes from 0 to 127, with low_note ≤ high_note.")
         if not isinstance(synth.get("sustain", True), bool):
             add("synth: sustain must be true or false.")
+        if synth.get("via", "bridge") not in ROUTES:
+            add("synth: via must be bridge or pedal.")
         bend = synth.get("bend_range", 2)
         if isinstance(bend, bool) or not isinstance(bend, (int, float)) or not 0 <= bend <= MAX_BEND_RANGE:
             add(f"synth: bend_range must be a number from 0 to {MAX_BEND_RANGE}.")

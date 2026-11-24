@@ -16,6 +16,7 @@ expression:                       # from `python probe.py cc`
   min: 0
   max: 127
   invert: false
+  via: bridge                     # bridge: it sets the parameters; pedal: CC 11 to a firmware that keeps its own targets
 
 bridge:
   min_interval_ms: 10             # minimum time between two parameter messages
@@ -35,6 +36,7 @@ synth:                            # optional: a MIDI keyboard plays a synth effe
   high_note: 127
   sustain: true                   # the sustain pedal (CC 64) holds notes
   bend_range: 2                   # semitones the pitch wheel bends each way, 0–12; 0 = wheel ignored
+  via: bridge                     # bridge: it plays the Key knobs; pedal: the notes to a firmware that plays them itself
 
 # Up to twelve parameters per preset, up to four per controller. This section is written by the
 # interface and must stay at the end of the file. Key "bank/program", as the pedal reports the

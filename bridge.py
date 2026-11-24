@@ -57,7 +57,7 @@ import arpeggiator
 import config_schema as cs
 import effect_names
 import effect_switch
-import pedal_scenes
+import pedal_firmware as pf
 import scenes as scene_file
 import sequencer
 import status_led
@@ -113,7 +113,15 @@ PRESET_READ_GAP = 0.02     # between reading two stored presets for their names
 PRESET_READ_TIMEOUT = 0.5  # … and how long one may take
 PRESET_READ_MISSES = 3     # stored presets in a row without an answer: the pedal does not give them
 PRESET_CHECK_SECONDS = 0.3 # after a preset was stored: its place is read back
-PEDAL_SCENE_SECONDS = 1.5 # the pedal's answer about its scenes (pedal_scenes.py) is given up on after this
+PEDAL_FIRMWARE_SECONDS = 1.5   # an answer of the pedal's firmware (pedal_firmware.py) is given up on after this
+# what the pedal's firmware keeps in a preset, as the bridge reads and writes it
+PEDAL_STORES = {
+    "scenes": {"name": "scenes", "title": "Scenes A and B", "op": pf.READ, "feature": pf.SCENES,
+               "read": "read_pedal_scenes", "write": "write_pedal_scenes", "copy": pf.copy},
+    "targets": {"name": "expression targets", "title": "Expression targets", "op": pf.READ_TARGETS,
+                "feature": pf.EXPRESSION_TARGETS, "read": "read_pedal_expression", "write": "write_pedal_expression",
+                "copy": list},
+}
 MISSES_BEFORE_SLOWDOWN = 3
 ACKS_BEFORE_SPEEDUP = 200
 MAX_INTERVAL = 0.1         # never throttle slower than 100 ms
@@ -395,7 +403,7 @@ def read_synth(cfg: dict) -> Optional[dict]:
     if not section or not (section.get("keyboard") or section.get("external")):
         return None
     unknown = set(section) - {"keyboard", "channel", "external", "external_channel", "effect_id", "poly_effect_id",
-                              "low_note", "high_note", "sustain", "bend_range"}
+                              "low_note", "high_note", "sustain", "bend_range", "via"}
     if unknown:
         sys.exit(f"config.yaml, synth: unknown setting {', '.join(sorted(unknown))}")
     effect_id = lambda name: None if section.get(name) is None else int(section[name])
@@ -406,7 +414,7 @@ def read_synth(cfg: dict) -> Optional[dict]:
                  "effect_id": effect_id("effect_id"), "poly_effect_id": effect_id("poly_effect_id"),
                  "low_note": int(section.get("low_note", 0)),
                  "high_note": int(section.get("high_note", 127)), "sustain": bool(section.get("sustain", True)),
-                 "bend_range": float(section.get("bend_range", 2))}
+                 "bend_range": float(section.get("bend_range", 2)), "via": section.get("via", "bridge")}
     except (TypeError, ValueError):
         sys.exit("config.yaml, synth: a value is not a number.")
     ids = [synth[name] for name in ("effect_id", "poly_effect_id") if synth[name] is not None]
@@ -414,10 +422,11 @@ def read_synth(cfg: dict) -> Optional[dict]:
             and all(0 < number <= 0xFFFFFFFF for number in ids)
             and len(set(ids)) == len(ids)
             and 0 <= synth["low_note"] <= synth["high_note"] <= 127
-            and 0 <= synth["bend_range"] <= MAX_BEND_RANGE):
+            and 0 <= synth["bend_range"] <= MAX_BEND_RANGE and synth["via"] in cs.ROUTES):
         sys.exit("config.yaml, synth: channel and external_channel must be 0–16 (0 = any), notes 0–127 with "
                  f"low_note ≤ high_note, bend_range 0–{MAX_BEND_RANGE} semitones, effect_id the id "
-                 "of the KeySynth effect and poly_effect_id that of KeyPoly (two different ids).")
+                 "of the KeySynth effect and poly_effect_id that of KeyPoly (two different ids), via bridge "
+                 "or pedal.")
     for number, effect in synth_effects(synth).items():
         known = zs.key_effect(number)
         if known not in (None, effect):         # it would be played with another effect's knobs
@@ -525,6 +534,11 @@ def ensure_pi_wlan() -> dict:
              + yaml.safe_dump({"pi": wlan}, sort_keys=False, allow_unicode=True))
     zs.write_whole(CONFIG, head + block + found + rest if found else text.rstrip("\n") + "\n" + block)
     return wlan
+
+
+def _whole(value) -> bool:
+    """A whole number as JSON gives it (not true or false)."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 class Keys:
@@ -911,11 +925,12 @@ class Session:
         self.preset_read_at = 0.0                           # when the next one may be asked for
         self.preset_save: Optional[dict] = None             # a preset being stored: place, phase, the patch
         self.preset_result: Optional[dict] = None           # what came of the last one: {"ok", "text"}
-        # the scenes the pedal's firmware keeps in its presets (pedal_scenes.py)
-        self.scene_support: Optional[dict] = None           # {"ok", "why", "most"}; None while asked
-        self.scene_job: Optional[dict] = None               # asking, reading or writing: kind, place, phase
-        self.pedal_scenes: Optional[dict] = None            # read from the pedal: place, "read", "edited"
-        self.scene_result: Optional[dict] = None            # what came of the last read or write: {"ok", "text"}
+        # what the pedal's firmware keeps and does itself (pedal_firmware.py)
+        self.firmware: Optional[dict] = None                # {"ok", "why", "version", "most", "features", …}; None: asked
+        self.firmware_job: Optional[dict] = None            # a question, or reading or writing: kind, what, place, phase
+        self.pedal_held: dict = {"scenes": None, "targets": None}    # read from the pedal: place, "read", "edited"
+        self.pedal_result: dict = {"scenes": None, "targets": None}  # what came of the last read or write
+        self.pedal_active: Optional[dict] = None            # the scene the pedal reports active: "scene", "differs"
         self.loading_stored = False                         # chosen here: the pedal loads the preset as stored
         self.reading_pedal = bridge.approvals.is_approved("read_pedal")
         self.reading_files = self.reading_pedal and bridge.approvals.is_approved("read_effect_file")
@@ -1023,7 +1038,7 @@ class Session:
             self._look_for_synth(time.monotonic(), force=True)
             self._wait(lambda raw: self.chain is not None, 1.0)
         self.ready = True
-        self._ask_scene_support(time.monotonic())
+        self._ask_firmware(time.monotonic())
         if self.reading_presets:
             self.preset_queue = [(bank, program) for bank in range(zs.PRESET_BANKS)
                                  for program in range(zs.PRESETS_PER_BANK)]
@@ -1087,7 +1102,7 @@ class Session:
         self._send_name(now)
         self._check_effect_change(now)
         self._check_preset_save(now)
-        self._check_pedal_scenes(now)
+        self._check_firmware(now)
         self._read_presets(now)
         self._read_pedal_at_start(now)
         self._check_edits(now)
@@ -1179,6 +1194,11 @@ class Session:
                 position = min(1.0, max(0.0, (message.value - expression["min"]) / span))
                 if expression["invert"]:
                     position = 1.0 - position
+                if self.pedal_takes_expression():       # the firmware sets its targets: the bridge sets none
+                    self.sender.pass_through(mido.Message("control_change", control=self.firmware["cc"],
+                                                          value=round(position * 127)), "pass_expression")
+                    self.last_send = time.monotonic()
+                    return
                 for target in self.targets:
                     if target.expression and not (target.stopped or target.blocked):
                         target.pending = (target.mapping.target(position), now)   # an older value is dropped
@@ -1206,137 +1226,211 @@ class Session:
             self._effect_done(False, _stopped(self.effect_change), play=False)
         if self.preset_save is not None and self.preset_save["phase"] == "reading":
             self._save_done(False, "Saving stopped: preset changed")
-        self._scenes_left_preset()
+        self._firmware_left_preset()
         if self.name_wanted is not None:            # the rest of the name would go into the next one
             self._name_done(False, "Renaming stopped: preset changed")
         self.refresh()
         self.query_at = now + QUERY_DELAY
 
-    # --- The scenes the pedal keeps in its presets itself (pedal_scenes.py) ---
+    # --- What the pedal's firmware keeps and does itself (pedal_firmware.py) ---
 
-    def _ask_scene_support(self, now: float) -> None:
-        """Whether the pedal's firmware keeps scenes A and B: a question of its own (the identity
-        still says 1.20 with it). Until it answers, and without an answer, the bridge's own scenes
-        are offered (scenes.py)."""
-        if pedal_scenes.COMMAND is None:
-            self.scene_support = {"ok": False, "why": "the scene messages are not agreed with the firmware yet"}
-        elif not self.bridge.approvals.is_approved("query_pedal_scenes"):
-            self.scene_support = {"ok": False, "why": "asking the pedal about its scenes is not approved"}
+    def _ask_firmware(self, now: float) -> None:
+        """What the pedal's firmware does: a question of its own (the identity still says 1.20 with
+        it). Until it answers, and without an answer, the bridge's own scenes and assignments are
+        offered, and it plays the synth and sets the parameters itself."""
+        if pf.COMMAND is None:
+            self.firmware = {"ok": False, "why": "the firmware's messages are not agreed with it yet"}
+        elif not self.bridge.approvals.is_approved("query_pedal_firmware"):
+            self.firmware = {"ok": False, "why": "asking the pedal what its firmware does is not approved"}
         else:
-            self.sender.send(pedal_scenes.build_query(self.device_id))
-            self.last_send = time.monotonic()
-            self.scene_job = {"kind": "query", "check_at": now + PEDAL_SCENE_SECONDS}
+            self._send_firmware(pf.build_query(self.device_id), {"kind": "query"}, now)
 
-    def _scene_refusal(self, *kinds: str) -> Optional[str]:
-        support = self.scene_support
-        if not support or not support["ok"]:
-            return "The pedal keeps no scenes of its own" + (f": {support['why']}." if support else " (being asked).")
-        if self.scene_job is not None:
-            return "The pedal's scenes are being read or written: try again in a moment."
+    def _send_firmware(self, message: bytes, job: Optional[dict], now: float) -> None:
+        self.sender.send(message)
+        self.last_send = time.monotonic()
+        if job is not None:
+            self.firmware_job = dict(job, check_at=now + PEDAL_FIRMWARE_SECONDS)
+
+    def firmware_does(self, feature: int) -> bool:
+        """Whether the pedal's firmware said it does that (pf.SCENES, pf.REPORTS_ACTIVE, …)."""
+        return bool(self.firmware and self.firmware["ok"] and self.firmware["features"] & feature)
+
+    def _ask_active(self, now: float) -> None:
+        """The scene the pedal has active in the preset on it: asked at the start and after every preset
+        change; it reports a press on its own. The answer only shows it – nothing is sent for it."""
+        self.pedal_active = None
+        if (self.firmware_does(pf.REPORTS_ACTIVE) and self.patch is not None
+                and self.bridge.approvals.is_approved("query_pedal_firmware")):
+            self._send_firmware(pf.build_query(self.device_id, pf.ACTIVE), None, now)
+
+    def _firmware_refusal(self, what: str, *kinds: str) -> Optional[str]:
+        store = PEDAL_STORES[what]
+        if not self.firmware_does(store["feature"]):
+            firmware = self.firmware
+            return (f"The pedal keeps no {store['name']} of its own"
+                    + (f": {firmware['why']}." if firmware and firmware.get("why") else
+                       " (being asked)." if firmware is None else "."))
+        if self.firmware_job is not None:
+            return "Something is being read from the pedal or written to it: try again in a moment."
         missing = [kind for kind in kinds if not self.bridge.approvals.is_approved(kind)]
         return f"Not approved: {', '.join(missing)}." if missing else None
 
-    def read_pedal_scenes(self, now: float) -> Optional[str]:
-        """Reads scene A and B of the preset on the pedal. Returns why it was not done."""
-        refused = self._scene_refusal("read_pedal_scenes")
+    def read_kept(self, what: str, now: float) -> Optional[str]:
+        """Reads the scenes ("scenes") or expression targets ("targets") the pedal keeps in the preset
+        on it. Returns why it was not done."""
+        refused = self._firmware_refusal(what, PEDAL_STORES[what]["read"])
         if refused:
             return refused
         if self.patch is None:
             return "The pedal has not reported a preset yet."
-        self.scene_result = None
-        self._send_scene_read({"kind": "read", "place": self.patch}, now)
+        self.pedal_result[what] = None
+        self._send_pedal_read({"kind": "read", "what": what, "place": self.patch}, now)
         return None
 
-    def _send_scene_read(self, job: dict, now: float) -> None:
-        self.sender.send(pedal_scenes.build_read(self.device_id, *job["place"]))
-        self.last_send = time.monotonic()
-        self.scene_job = dict(job, phase="reading", check_at=now + PEDAL_SCENE_SECONDS)
+    def _send_pedal_read(self, job: dict, now: float) -> None:
+        self._send_firmware(pf.build_read(self.device_id, *job["place"], PEDAL_STORES[job["what"]]["op"]),
+                            dict(job, phase="reading"), now)
 
-    def write_pedal_scenes(self, now: float) -> Optional[str]:
-        """Writes the scenes as edited into the preset they were read from – only while the pedal is
-        on that preset (the address is checked again) –, then reads them back: only the same as
-        written counts as done. Returns why it was not done."""
-        refused = self._scene_refusal("write_pedal_scenes", "read_pedal_scenes")
+    def _pedal_problems(self, what: str, data) -> list:
+        firmware = self.firmware or {}
+        return (pf.problems(data, firmware.get("most")) if what == "scenes"
+                else pf.target_problems(data, firmware.get("targets")))
+
+    def write_kept(self, what: str, now: float) -> Optional[str]:
+        """Writes the scenes or targets as edited into the preset they were read from – only while the
+        pedal is on that preset (the address is checked again) –, then reads them back: only the same
+        as written counts as done. What was edited stays until then, whatever the pedal answers."""
+        store = PEDAL_STORES[what]
+        refused = self._firmware_refusal(what, store["write"], store["read"])
         if refused:
             return refused
-        held = self.pedal_scenes
+        held = self.pedal_held[what]
         if held is None:
-            return "Read the scenes from the pedal first."
+            return f"Read the {store['name']} from the pedal first."
         if held["place"] != self.patch:
-            return (f"These are the scenes of preset {display(held['place'])}, the pedal is on "
+            return (f"These are the {store['name']} of preset {display(held['place'])}, the pedal is on "
                     f"{display(self.patch) if self.patch else 'no preset'} now: choose that one again, or read anew.")
-        found = pedal_scenes.problems(held["edited"], self.scene_support["most"])
+        found = self._pedal_problems(what, held["edited"])
         if found:
             return found[0]
-        written = pedal_scenes.copy(held["edited"])
-        self.sender.send(pedal_scenes.build_write(self.device_id, *held["place"], written))
-        self.last_send = time.monotonic()
-        self.scene_result = None
-        self.scene_job = {"kind": "write", "place": held["place"], "written": written, "phase": "writing",
-                          "check_at": now + PEDAL_SCENE_SECONDS}
+        written = store["copy"](held["edited"])
+        message = (pf.build_write(self.device_id, *held["place"], written) if what == "scenes"
+                   else pf.build_write_targets(self.device_id, *held["place"], written))
+        self.pedal_result[what] = None
+        self._send_firmware(message, {"kind": "write", "what": what, "place": held["place"], "written": written,
+                                      "phase": "writing"}, now)
         return None
 
-    def _on_pedal_scenes(self, answer: tuple, now: float) -> None:
-        job = self.scene_job
-        if answer[0] == "query":
+    def _on_firmware(self, answer: tuple, now: float) -> None:
+        job, kind = self.firmware_job, answer[0]
+        if kind == "query":
             if job is not None and job["kind"] == "query":
-                self.scene_job = None
-                self.scene_support = {"ok": True, "why": None, "version": answer[1], "most": answer[2]}
-                say(f"The pedal keeps scenes A and B in its presets (scene version {answer[1]})")
+                self.firmware_job = None
+                version, most, features = answer[1:]
+                self.firmware = {"ok": True, "why": None, "version": version, "most": most, "features": features,
+                                 "targets": None, "cc": None}
+                say(f"The pedal's firmware (version {version}): " + ", ".join(
+                    text for flag, text in ((pf.SCENES, "scenes A and B" + ("" if most else " (switches only)")),
+                                            (pf.REPORTS_ACTIVE, "reports the active scene"),
+                                            (pf.PLAYS_NOTES, "plays the synth from MIDI notes"),
+                                            (pf.EXPRESSION_TARGETS, "keeps expression targets"))
+                    if features & flag) or "nothing of its own")
+                if features & pf.EXPRESSION_TARGETS:
+                    self._send_firmware(pf.build_query(self.device_id, pf.EXPRESSION), {"kind": "expression"}, now)
+                self._ask_active(now)
             return
-        kind, status, place = answer[:3]
-        if job is None or job["kind"] == "query" or job["place"] != place:
-            zs.log.info("--  scenes of preset %s not asked for", display(place))
+        if kind == "expression":
+            if job is not None and job["kind"] == "expression":
+                self.firmware_job = None
+                self.firmware.update(targets=answer[1], cc=answer[2])
             return
-        failed = pedal_scenes.STATUS.get(status, f"answer {status}")
-        if kind == "write" and job["phase"] == "writing":
+        if kind == "active":
+            place, scene, differs = answer[1:]
+            if place != self.patch:                 # another preset's: nothing of this one
+                zs.log.info("--  active scene of preset %s, not the one on the pedal", display(place))
+                return
+            self.pedal_active = {"scene": scene, "differs": differs}
+            zs.log.info("--  scene %s active on the pedal%s", scene or "(none)", " (changed)" if differs else "")
+            return
+        what = "scenes" if kind in ("read", "write") else "targets"
+        store, status, place = PEDAL_STORES[what], answer[1], answer[2]
+        if job is None or job.get("what") != what or job["place"] != place:
+            # another address than asked: not taken; what was edited stays, the job runs out
+            zs.log.info("--  %s of preset %s not asked for", store["name"], display(place))
+            return
+        failed = pf.STATUS.get(status, f"answer {status}")
+        if kind.startswith("write") and job["phase"] == "writing":
             if status:
-                self._scenes_done(False, f"Scenes not written into preset {display(place)}: {failed}")
+                self._pedal_done(what, False, f"{store['title']} not written into preset {display(place)}: {failed}")
             else:
-                self._send_scene_read(job, now)          # read back: only that tells what it holds
+                self._send_pedal_read(job, now)          # read back: only that tells what it holds
             return
-        if kind != "read" or job["phase"] != "reading":
+        if not kind.startswith("read") or job["phase"] != "reading":
             return
         if status:
-            self._scenes_done(False, f"Scenes of preset {display(place)} not "
-                                     f"{'read back' if job['kind'] == 'write' else 'read'}: {failed}")
+            self._pedal_done(what, False, f"{store['title']} of preset {display(place)} not "
+                                          f"{'read back' if job['kind'] == 'write' else 'read'}: {failed}")
             return
-        scenes, held = answer[3], self.pedal_scenes
+        data, held = answer[3], self.pedal_held[what]
         if job["kind"] == "read":
-            self.pedal_scenes = {"place": place, "read": scenes, "edited": pedal_scenes.copy(scenes)}
-            self._scenes_done(True, f"Scenes A and B of preset {display(place)} read")
+            self.pedal_held[what] = {"place": place, "read": data, "edited": store["copy"](data)}
+            self._pedal_done(what, True, f"{store['title']} of preset {display(place)} read")
             return
         if held is not None and held["place"] == place:
-            held["read"] = scenes                        # what it holds now: unsaved is what differs from it
-        same = scenes == job["written"]
-        zs.log.info("--  preset %s holds the scenes %s", display(place), "as written" if same else "otherwise")
-        self._scenes_done(same, f"Scenes A and B written into preset {display(place)} and read back the same" if same
-                          else f"Preset {display(place)} holds other scenes than were written: look at them and write again")
+            held["read"] = data                          # what it holds now: unsaved is what differs from it
+        same = data == job["written"]
+        zs.log.info("--  preset %s holds the %s %s", display(place), store["name"], "as written" if same else "otherwise")
+        self._pedal_done(what, same, f"{store['title']} written into preset {display(place)} and read back the same"
+                         if same else f"Preset {display(place)} holds other {store['name']} than were written: "
+                                      "look at them and write again")
 
-    def _check_pedal_scenes(self, now: float) -> None:
-        job = self.scene_job
+    def _check_firmware(self, now: float) -> None:
+        job = self.firmware_job
         if job is None or now < job["check_at"]:
             return
         if job["kind"] == "query":
-            self.scene_job = None
-            self.scene_support = {"ok": False, "why": "it did not answer the question for them"}
-            zs.log.info("--  no answer about scenes: the bridge's own are offered")
+            self.firmware_job = None
+            self.firmware = {"ok": False, "why": "it did not answer the question (a firmware of Zoom's)"}
+            zs.log.info("--  no answer about the firmware: the bridge's own scenes and ways are kept")
+        elif job["kind"] == "expression":
+            self.firmware_job = None
+            self.firmware["features"] &= ~pf.EXPRESSION_TARGETS
+            zs.log.info("--  no answer about the expression targets: none are offered")
         elif job["kind"] == "read":
-            self._scenes_done(False, f"The pedal did not answer: the scenes of preset {display(job['place'])} were not read")
+            store = PEDAL_STORES[job["what"]]
+            self._pedal_done(job["what"], False, f"The pedal did not answer: the {store['name']} of preset "
+                                                 f"{display(job['place'])} were not read")
         else:
-            self._scenes_done(False, f"The pedal did not answer: whether preset {display(job['place'])} holds the "
-                                     "scenes is not known – read them again")
+            self._pedal_done(job["what"], False, f"The pedal did not answer: whether preset {display(job['place'])} "
+                                                 f"holds the {PEDAL_STORES[job['what']]['name']} is not known – "
+                                                 "read them again")
 
-    def _scenes_left_preset(self) -> None:
-        """Another preset: scenes being read would be another preset's. Those being written go on
-        by their address, which the write and the reading back name."""
-        if self.scene_job is not None and self.scene_job["kind"] == "read":
-            self._scenes_done(False, "Reading the scenes stopped: preset changed")
+    def _firmware_left_preset(self) -> None:
+        """Another preset: what is being read would be another preset's. What is being written goes on
+        by its address, which the write and the reading back name. Its active scene is not known."""
+        self.pedal_active = None
+        job = self.firmware_job
+        if job is not None and job["kind"] == "read":
+            self._pedal_done(job["what"], False, f"Reading the {PEDAL_STORES[job['what']]['name']} stopped: "
+                                                 "preset changed")
 
-    def _scenes_done(self, ok: bool, text: str) -> None:
+    def _pedal_done(self, what: str, ok: bool, text: str) -> None:
         say(text)
-        self.scene_result = {"ok": ok, "text": text}
-        self.scene_job = None
+        self.pedal_result[what] = {"ok": ok, "text": text}
+        self.firmware_job = None
+
+    def _editable(self, what: str) -> tuple:
+        """(what is held, None), or (None, why it cannot be edited now)."""
+        held = self.pedal_held[what]
+        name = PEDAL_STORES[what]["name"]
+        if held is None:
+            return None, f"Read the {name} from the pedal first."
+        if held["place"] != self.patch:
+            return None, f"These are the {name} of preset {display(held['place'])}: choose that one again, or read anew."
+        job = self.firmware_job
+        if job is not None and job.get("what") == what and job["kind"] == "write":
+            return None, f"The {name} are being written: try again in a moment."
+        return held, None
 
     def edit_pedal_scene(self, action: str, data: dict, now: float) -> Optional[str]:
         """From the interface: "pedal_read", "pedal_write", "pedal_discard" (the edits go), and for
@@ -1344,22 +1438,19 @@ class Session:
         scene), "pedal_value" a knob of the effect in that place now ("slot", "param", "value") and
         "pedal_drop" one ("slot", "param"). Returns why it was not done."""
         if action == "pedal_read":
-            return self.read_pedal_scenes(now)
+            return self.read_kept("scenes", now)
         if action == "pedal_write":
-            return self.write_pedal_scenes(now)
-        held = self.pedal_scenes
-        if held is None:
-            return "Read the scenes from the pedal first."
+            return self.write_kept("scenes", now)
         if action == "pedal_discard":
-            held["edited"] = pedal_scenes.copy(held["read"])
+            held = self.pedal_held["scenes"]
+            if held is not None:
+                held["edited"] = pf.copy(held["read"])
             return None
-        if held["place"] != self.patch:
-            return f"These are the scenes of preset {display(held['place'])}: choose that one again, or read anew."
-        if self.scene_job is not None and self.scene_job["kind"] == "write":
-            return "The scenes are being written: try again in a moment."
+        held, refused = self._editable("scenes")
+        if refused:
+            return refused
         name, slot, param = data.get("scene"), data.get("slot"), data.get("param")
-        whole = lambda value: isinstance(value, int) and not isinstance(value, bool)
-        if name not in pedal_scenes.NAMES or not (whole(slot) and 0 <= slot < zs.MAX_SLOTS):
+        if name not in pf.NAMES or not (_whole(slot) and 0 <= slot < zs.MAX_SLOTS):
             return "Scene A or B, effect 1 to 6."
         scene = held["edited"][name]
         if action == "pedal_switch":
@@ -1372,22 +1463,111 @@ class Session:
                 return "On, off, or not part of the scene."
             return None
         if action == "pedal_drop":
-            return None if whole(param) and scene["values"].pop((slot, param), None) else "The scene does not set that."
+            return None if _whole(param) and scene["values"].pop((slot, param), None) else "The scene does not set that."
         if action != "pedal_value":
             return "Unknown action."
-        effect = self.chain_ids[slot] if self.chain_ids and slot < len(self.chain_ids) else 0
-        value = data.get("value")
+        effect, value = self._effect_in(slot), data.get("value")
         if not effect:
             return f"There is no effect {slot + 1} in this preset now."
-        if not (whole(param) and whole(value)):
+        if not (_whole(param) and _whole(value)):
             return "A knob and its value."
-        trial = pedal_scenes.copy(held["edited"])
+        trial = pf.copy(held["edited"])
         trial[name]["values"][(slot, param)] = (effect, value)
-        found = pedal_scenes.problems(trial, self.scene_support["most"] if self.scene_support else None)
+        found = self._pedal_problems("scenes", trial)
         if found:
             return found[0]
         held["edited"] = trial
         return None
+
+    def _effect_in(self, slot: int) -> int:
+        """The id of the effect in that place of the chain now; 0 if none or not known."""
+        return self.chain_ids[slot] if self.chain_ids and 0 <= slot < len(self.chain_ids) else 0
+
+    def edit_pedal_targets(self, action: str, data: dict, now: float) -> Optional[str]:
+        """From the interface: "read", "write", "discard", "add" a knob of the effect in a place now as
+        a target ("slot", "param", "heel", "toe"), "drop" one ("slot", "param"), and "from_bridge": the
+        bridge's own assignments of the expression pedal in this preset as the targets (those it can be:
+        linear, at most as many as the pedal keeps; what is left out is said). Returns why it was not done."""
+        if action == "read":
+            return self.read_kept("targets", now)
+        if action == "write":
+            return self.write_kept("targets", now)
+        if action == "discard":
+            held = self.pedal_held["targets"]
+            if held is not None:
+                held["edited"] = list(held["read"])
+            return None
+        held, refused = self._editable("targets")
+        if refused:
+            return refused
+        slot, param = data.get("slot"), data.get("param")
+        if action == "drop":
+            kept = [target for target in held["edited"] if (target[0], target[2]) != (slot, param)]
+            if len(kept) == len(held["edited"]):
+                return "There is no such target."
+            held["edited"] = kept
+            return None
+        if action == "from_bridge":
+            targets, left_out = self.bridge_expression_targets()
+            most = (self.firmware or {}).get("targets")
+            if most is not None and len(targets) > most:
+                left_out += [f"{len(targets) - most} beyond the {most} the pedal keeps"]
+                targets = targets[:most]
+            held["edited"] = targets
+            self.pedal_result["targets"] = {"ok": True, "text": f"{len(targets)} of the bridge's assignments taken"
+                                            + (f"; left out: {'; '.join(left_out)}" if left_out else "")
+                                            + " – not written yet"}
+            return None
+        if action != "add":
+            return "Unknown action."
+        heel, toe = data.get("heel"), data.get("toe")
+        if not (_whole(slot) and 0 <= slot < zs.MAX_SLOTS and _whole(param) and _whole(heel) and _whole(toe)):
+            return "Effect 1 to 6, a knob, heel and toe."
+        effect = self._effect_in(slot)
+        if not effect:
+            return f"There is no effect {slot + 1} in this preset now."
+        trial = [target for target in held["edited"] if (target[0], target[2]) != (slot, param)]
+        trial.append((slot, effect, param, heel, toe))
+        found = self._pedal_problems("targets", trial)
+        if found:
+            return found[0]
+        held["edited"] = trial
+        return None
+
+    def bridge_expression_targets(self) -> tuple:
+        """The bridge's assignments of the expression pedal in this preset as the pedal's targets:
+        heel and toe are min and max (swapped when inverted). Only a linear one can be such a target,
+        and only one whose effect is known. Returns (targets, what was left out and why)."""
+        targets, left_out = [], []
+        for mapping in self.bridge.mappings.get(self.patch, ()):
+            if mapping.cc is not None:
+                continue                            # another controller's: the bridge keeps it
+            effect = mapping.effect or self._effect_in(mapping.slot)
+            where = mapping.describe()
+            if mapping.curve != "linear":
+                left_out.append(f"{where} ({mapping.curve} curve)")
+            elif not effect:
+                left_out.append(f"{where} (its effect is not known)")
+            elif pf.key_knob(effect, mapping.param):
+                left_out.append(f"{where} (a Key knob)")
+            else:
+                heel, toe = (mapping.max, mapping.min) if mapping.invert else (mapping.min, mapping.max)
+                targets.append((mapping.slot, effect, mapping.param, heel, toe))
+        return targets, left_out
+
+    def pedal_plays_notes(self) -> bool:
+        """The keyboard's notes go to the pedal as they are (synth "via: pedal"), only when its firmware
+        plays the synth itself and passing them is approved; otherwise the bridge plays the Key knobs.
+        Never both."""
+        return (self.synth is not None and self.synth["via"] == "pedal" and self.firmware_does(pf.PLAYS_NOTES)
+                and self.bridge.approvals.is_approved("pass_notes"))
+
+    def pedal_takes_expression(self) -> bool:
+        """The expression pedal goes to the pedal as its CC (expression "via: pedal"), only when its
+        firmware keeps expression targets and passing it is approved; then the bridge sets no
+        parameter for it. Never both."""
+        return (self.expression.get("via", "bridge") == "pedal" and self.firmware_does(pf.EXPRESSION_TARGETS)
+                and self.firmware.get("cc") is not None and self.bridge.approvals.is_approved("pass_expression"))
 
     # --- Presets: choosing, their names, storing ---
 
@@ -1858,6 +2038,11 @@ class Session:
             return
         channel = synth["external_channel"] if external else synth["channel"]
         if channel and message.channel + 1 != channel:
+            return
+        if self.pedal_plays_notes() and (message.type in ("note_on", "note_off", "pitchwheel") or (
+                message.type == "control_change" and message.control in (64, 120, 123))):
+            self.sender.pass_through(message, "pass_notes")     # the firmware plays them, the bridge does not
+            self.last_send = time.monotonic()
             return
         if message.type in ("note_on", "note_off"):
             if not synth["low_note"] <= message.note <= synth["high_note"]:
@@ -3035,9 +3220,9 @@ class Session:
             change, program_info = zs.parse_param(body), zs.parse_program_info(body)
             dump = zs.parse_patch_dump(body) if self.watching else None
             stored = zs.parse_stored_preset(body)
-            scene_answer = pedal_scenes.parse(body)
-            if scene_answer:
-                self._on_pedal_scenes(scene_answer, now)
+            firmware_answer = pf.parse(body)
+            if firmware_answer:
+                self._on_firmware(firmware_answer, now)
             elif stored:
                 self._on_stored(stored, now)
             elif program_info:
@@ -3114,7 +3299,8 @@ class Session:
             self._effect_done(False, _stopped(self.effect_change), play=False)
         if self.preset_save is not None and self.preset_save["phase"] == "reading":
             self._save_done(False, "Saving stopped: preset changed")   # its patch would be this one's
-        self._scenes_left_preset()
+        self._firmware_left_preset()
+        self._ask_active(time.monotonic())     # the new preset's, once it is known
         if self.synth is not None:   # the effect may sit elsewhere now, or not be there at all
             self.synth_slot, self.synth_effect, self.synth_known, self.voices = None, None, False, []
         if self.watching:
@@ -3575,35 +3761,63 @@ class Bridge:
                 done.set()
 
     @staticmethod
-    def _pedal_scenes_state(session, chain: Optional[list]) -> Optional[dict]:
-        """Scene A and B of the pedal as edited, where they come from and whether they differ from
-        what it holds; the knobs of the chain a scene can take (no Key knob). None while the pedal
-        keeps no scenes (the bridge's own are offered)."""
-        support = session.scene_support if session else None
-        if not support or not support["ok"]:
-            return None
-        held, job, approved = session.pedal_scenes, session.scene_job, session.bridge.approvals.is_approved
+    def _firmware_state(session) -> dict:
+        """What the pedal's firmware does, as the interface shows it: whether it answered and why not,
+        and each thing on its own – a synth effect being in the chain is something else than the
+        firmware playing one from notes (the synth's "playable")."""
+        firmware = session.firmware if session else None
+        return {"asked": bool(session) and firmware is None,
+                "ok": bool(firmware and firmware["ok"]),
+                "why": firmware.get("why") if firmware else None,
+                "version": firmware.get("version") if firmware else None,
+                "scenes": bool(session and session.firmware_does(pf.SCENES)),
+                "reports_active": bool(session and session.firmware_does(pf.REPORTS_ACTIVE)),
+                "plays_notes": bool(session and session.firmware_does(pf.PLAYS_NOTES)),
+                "expression_targets": bool(session and session.firmware_does(pf.EXPRESSION_TARGETS)),
+                # which way notes and the expression pedal go now: "bridge", or "pedal" (never both)
+                "notes_via": "pedal" if session and session.pedal_plays_notes() else "bridge",
+                "expression_via": "pedal" if session and session.pedal_takes_expression() else "bridge"}
 
-        def shown(scene: dict) -> dict:
-            return {"effects": [{"slot": slot, "on": on} for slot, on in sorted(scene["effects"].items())],
-                    # away: another effect is in that place now, so the pedal leaves the value
+    @staticmethod
+    def _pedal_held_state(session, what: str, chain: Optional[list]) -> Optional[dict]:
+        """The scenes or expression targets the pedal keeps, as edited, where they come from and
+        whether they differ from what it holds; the knobs of the chain they can take (no Key knob).
+        None while the pedal keeps none (the bridge's own are offered)."""
+        store = PEDAL_STORES[what]
+        if not (session and session.firmware_does(store["feature"])):
+            return None
+        held, job = session.pedal_held[what], session.firmware_job
+        approved = session.bridge.approvals.is_approved
+        # away: another effect is in that place now, so the pedal leaves it
+        away = lambda slot, effect: chain is not None and not (slot < len(chain) and same_effect(chain[slot], effect))
+
+        def scene(data: dict) -> dict:
+            return {"effects": [{"slot": slot, "on": on} for slot, on in sorted(data["effects"].items())],
                     "values": [{"slot": slot, "param": param, "value": value, "effect": f"{effect:08X}",
-                                "label": effect_label(effect, param),
-                                "away": chain is not None and not (slot < len(chain) and same_effect(chain[slot], effect))}
-                               for (slot, param), (effect, value) in sorted(scene["values"].items())]}
+                                "label": effect_label(effect, param), "away": away(slot, effect)}
+                               for (slot, param), (effect, value) in sorted(data["values"].items())]}
+
+        def targets(data: list) -> list:
+            return [{"slot": slot, "param": param, "heel": heel, "toe": toe, "effect": f"{effect:08X}",
+                     "label": effect_label(effect, param), "away": away(slot, effect)}
+                    for slot, effect, param, heel, toe in data]
+        shown = scene if what == "scenes" else targets
         return {
-            "most": support["most"],
-            "read": approved("read_pedal_scenes"),
-            "write": approved("write_pedal_scenes") and approved("read_pedal_scenes"),
-            "busy": job["kind"] if job and job["kind"] != "query" else None,
+            "most": session.firmware["most"] if what == "scenes" else session.firmware.get("targets"),
+            "cc": session.firmware.get("cc"),
+            "read": approved(store["read"]),
+            "write": approved(store["write"]) and approved(store["read"]),
+            "busy": job["kind"] if job and job.get("what") == what else None,
             "place": {"key": f"{held['place'][0]}/{held['place'][1]}", "display": display(held["place"])} if held else None,
             "dirty": bool(held and held["edited"] != held["read"]),
-            "scenes": {name: shown(held["edited"][name]) for name in pedal_scenes.NAMES} if held else None,
-            "result": session.scene_result,
+            "data": ({name: shown(held["edited"][name]) for name in pf.NAMES} if what == "scenes"
+                     else shown(held["edited"])) if held else None,
+            "result": session.pedal_result[what],
+            "active": session.pedal_active if what == "scenes" else None,
             "choices": [{"slot": slot, "param": knob["param"], "name": f"{effect_label(effect)} · {knob['name']}",
                          "max": knob["max"]}
                         for slot, effect in enumerate(chain or []) if effect
-                        for knob in effect_names.knobs(effect) if not pedal_scenes.key_knob(effect, knob["param"])],
+                        for knob in effect_names.knobs(effect) if not pf.key_knob(effect, knob["param"])],
         }
 
     def _publish(self) -> None:
@@ -3729,8 +3943,11 @@ class Bridge:
                 "max": scene_file.MAX_SCENES,
                 "max_name": scene_file.MAX_NAME,
                 # scene A and B the pedal keeps in the preset itself, when its firmware does (else null)
-                "pedal": self._pedal_scenes_state(session, chain),
+                "pedal": self._pedal_held_state(session, "scenes", chain),
             },
+            # what the pedal's firmware does itself, and the expression targets it keeps in this preset
+            "firmware": self._firmware_state(session),
+            "pedal_expression": self._pedal_held_state(session, "targets", chain),
             "synth": None if self.synth is None else {
                 "keyboard": bool(session and session.keyboard is not None),
                 # the external sequencer: None if none is set up, otherwise whether it is connected
@@ -4373,6 +4590,17 @@ class Bridge:
         else:
             raise UserError("Unknown action.")
         self._store_controls()
+
+    def pedal_expression(self, data: dict) -> None:
+        """From the interface: the expression targets the pedal keeps in the preset on it
+        (Session.edit_pedal_targets)."""
+        session = self.session
+        if session is None or not session.ready or session.patch is None:
+            raise UserError("The MS-60B+ is not connected or has not reported a preset yet.")
+        action = data.get("action")
+        refused = session.edit_pedal_targets(action if isinstance(action, str) else "", data, time.monotonic())
+        if refused:
+            raise UserError(refused)
 
     def learned_scene(self, number: int) -> None:
         """The session saw a controller move while a scene was waiting for one."""

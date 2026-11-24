@@ -120,6 +120,7 @@ def answer(bridge, method: str, target: str, body: bytes = b"", here: bool = Fal
             "/api/devices": lambda: bridge.devices(data),
             "/api/effects": lambda: bridge.effects(data),
             "/api/scenes": lambda: bridge.scene(data),
+            "/api/pedal_expression": lambda: bridge.pedal_expression(data),
             "/api/parameter": lambda: bridge.parameter(data),
             "/api/rename": lambda: bridge.rename_preset(data),
             "/api/preset": lambda: bridge.preset(data),

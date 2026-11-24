@@ -539,10 +539,10 @@ def classify(msg: bytes, device_id: Optional[int] = None,
         raise NotAllowed(f"no Zoom header for device ID {device_id:02X}: {to_hex(msg)}")
 
     body = msg[4:-1]
-    import pedal_scenes                  # the firmware's scenes: nothing while their bytes are not agreed
-    scene_kind = pedal_scenes.classify(body)
-    if scene_kind:
-        return scene_kind
+    import pedal_firmware              # the firmware's own messages: nothing while their bytes are not agreed
+    firmware_kind = pedal_firmware.classify(body)
+    if firmware_kind:
+        return firmware_kind
     if listing and body in FILE_LIST_BODIES:
         return "read_pedal"
     if listing and file_name and EFFECT_FILE.fullmatch(file_name) and (
@@ -723,10 +723,10 @@ class Measurements:
 # --- Approvals ---
 
 def known_kind(kind: str) -> bool:
-    """A message kind of the bridge: one of the allowlist, or one of the pedal's scenes (not offered
-    for approval while their bytes are not agreed with the firmware: pedal_scenes.KINDS)."""
-    import pedal_scenes
-    return kind in KINDS or kind in pedal_scenes.KINDS
+    """A message kind of the bridge: one of the allowlist, or one of the pedal's firmware (not offered
+    for approval while their bytes are not agreed with it: pedal_firmware.KINDS)."""
+    import pedal_firmware
+    return kind in KINDS or kind in pedal_firmware.KINDS
 
 
 class Approvals:
@@ -790,6 +790,22 @@ class ZoomSender:
         if kind in ("move_effect", "add_effect", "delete_effect", "save_preset"):
             self.upload = None
         return kind
+
+    def pass_through(self, message: "mido.Message", kind: str) -> None:
+        """A message as it is to a pedal whose firmware takes it itself (pedal_firmware.py): the
+        keyboard's notes, pitch wheel, sustain and all-notes-off ("pass_notes"), or the expression
+        pedal's CC ("pass_expression"). Nothing else, and only when approved."""
+        allowed = {"pass_notes": {"note_on", "note_off", "pitchwheel", "control_change"},
+                   "pass_expression": {"control_change"}}
+        if message.type not in allowed.get(kind, ()) or (
+                kind == "pass_notes" and message.type == "control_change" and message.control not in (64, 120, 123)):
+            raise NotAllowed(f"not passed to the pedal as {kind}: {message}")
+        if not self.approvals.backup_confirmed:
+            raise NotApproved("backup")
+        if not self.approvals.is_approved(kind):
+            raise NotApproved(kind)
+        log.info("TX  %s  (%s)", message, kind)
+        self.port.send(message)
 
     def select_preset(self, bank: int, program: int) -> None:
         """Bank select and program change, as the pedal sends them when a preset is chosen on it:

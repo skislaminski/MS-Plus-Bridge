@@ -1,5 +1,5 @@
 ["arpeggiator.py", "bridge.py", "config_schema.py", "effect_names.py", "effect_pictures.py",
- "effect_switch.py", "pedal_scenes.py", "probe.py", "scenes.py", "sequencer.py", "status_led.py", "synth_controls.py",
+ "effect_switch.py", "pedal_firmware.py", "probe.py", "scenes.py", "sequencer.py", "status_led.py", "synth_controls.py",
  "ui.py", "zoom_sysex.py", "zoom_effects.json", "zoom_effects_other.json", "config.example.yaml",
  "ui.html", "effect_icons/ACID.ZIC", "effect_icons/ACOUSTIC.ZIC", "effect_icons/ALIGN.ZIC",
  "effect_icons/ARP.ZIC", "effect_icons/AUTOBEND.ZIC", "effect_icons/AUTOLVL.ZIC",

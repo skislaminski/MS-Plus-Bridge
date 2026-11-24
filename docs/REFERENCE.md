@@ -865,16 +865,22 @@ from learned controllers. It uses the messages of the expression pedal and the e
   [Switching effects on and off](#switching-effects-on-and-off).
 - Scenes are kept in `controls.json` and travel with the backup ("Export…") and the file for the Pi.
 
-**Scenes kept by the pedal itself** (a modified firmware, not released yet): scene A and B in
-every preset, which a short press on the pedal switches. When the pedal answers the bridge's
-question for them, "Scenes" shows them above the bridge's own: *Read from pedal* loads A and B
-of the preset on the pedal; a click on an effect's number goes through "–" (not part of the
-scene), "on" and "off"; *Add a knob* puts a knob of the chain with its value in (never a Key
-knob of a synth effect). The line above them says which preset they come from and whether
-there are unsaved changes. *Write to pedal* stores them only into that preset, while it is on
-the pedal, and reads them back: only the same as written counts as done. The messages are not
-agreed with the firmware yet ([PEDAL_SCENES.md](PEDAL_SCENES.md)); until then the bridge does not
-ask, and offers its own scenes as before.
+**What a modified firmware keeps itself** (not released yet): when the pedal answers the bridge's
+question for it, "Scenes" shows **Pedal scenes** – scene A and B kept in the preset on the pedal,
+which a short press switches – apart from the **Bridge scenes** below them. *Read from pedal*
+loads A and B of the preset on the pedal; a click on an effect's number goes through "–" (left as
+it is), "on" and "off"; knob values only where the firmware keeps them (never a Key knob of a
+synth effect). The line above them says which preset they come from, whether there are unsaved
+changes, and which scene the pedal has active ("B *": something changed since). *Write to pedal*
+stores them only into that preset, while it is on the pedal, and reads them back: only the same
+as written counts as done; whatever goes wrong, the edits stay. Under the effects, **Expression
+targets in the pedal** are the knobs the pedal's own CC 11 moves, each with heel and toe; *Take
+the bridge's* turns this preset's linear assignments of the expression pedal into them. With
+`synth: via: pedal` the keyboard's notes, and with `expression: via: pedal` the expression pedal
+(as CC 11), go to such a firmware as they are and the bridge plays and sets nothing for them –
+one way only. The messages are not agreed with the firmware yet
+([PEDAL_FIRMWARE.md](PEDAL_FIRMWARE.md)); until then the bridge does not ask, passes nothing, and
+offers its own scenes and assignments as before.
 
 ## When effects move
 
