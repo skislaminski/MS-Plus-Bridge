@@ -69,9 +69,9 @@ A phone or tablet uses the bridge's interface in the browser:
 - **With a Raspberry Pi:** join the Pi's WLAN "MS Plus Bridge" and open `http://10.42.0.1`.
 - **Android without a computer (experimental, not yet tried with a real pedal):** Chrome on Android runs
   the bridge itself, the pedal on a USB-OTG adapter. Open
-  **https://skislaminski.github.io/MS-Plus-Bridge/webmidi/** in Chrome. It asks for the approvals and reads the pedal's device ID like
-  the first start on a computer, keeps the settings in the browser and starts without internet after
-  the first time. Keep the screen on and the page in front: Android pauses pages in the background.
+  **https://skislaminski.github.io/MS-Plus-Bridge/webmidi/** in Chrome. It asks nothing (back up your
+  presets first), reads the pedal's device ID by itself, keeps the settings in the browser and starts
+  without internet after the first time. Keep the screen on and the page in front: Android pauses pages in the background.
 - **The remote, also on iPhone and iPad (experimental, not yet tried with a real pedal):** the knobs of
   the pedal's current preset and nothing else, without Python:
   **https://skislaminski.github.io/MS-Plus-Bridge/webmidi/remote.html**. It needs a browser with Web
@@ -102,8 +102,9 @@ KeyBand, Pluck**. **The effects are not part of this repository** – they are p
 ## Safety
 
 - Back up your patches with Zoom's software before the first start.
-- Every message the bridge sends is on a fixed list, and each kind needs your approval once
-  (`probe.py approve`); everything sent and received is logged in `logs/sysex.log`.
+- Every message the bridge sends is on a fixed list, with values only within what was learned. On a
+  computer each kind needs your approval once (`probe.py approve`); the pages for the phone ask
+  nothing. Everything sent and received is logged in `logs/sysex.log`.
 - Close other software that talks to the pedal (Zoom's editor, a DAW) while the bridge runs.
 
 ## If something does not work

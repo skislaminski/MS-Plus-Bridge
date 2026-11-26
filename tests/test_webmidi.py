@@ -154,12 +154,6 @@ class SameBytes(unittest.TestCase):
         self.assertEqual([zs.model_name(zs.parse_identity_reply(reply)) for reply in replies], found)
         self.assertEqual(None, found[-1])
 
-    def test_every_kind_has_plain_words_and_the_same_on_both_sides(self):
-        self.assertEqual(set(zs.KIND_LABELS), set(zs.KINDS))          # what the Android page shows for approval
-        found = node("console.log(JSON.stringify([zs.KINDS, zs.LABELS]));", None)
-        self.assertEqual(set(found[1]), set(found[0]))
-        self.assertEqual(found[1], {kind: zs.KIND_LABELS[kind] for kind in found[1]})
-
 @unittest.skipUnless(NODE, "Node.js is not installed")
 class SimulatedPedal(unittest.TestCase):
     """webmidi/pedal.js through the MIDIAccess of webmidi/sim_midi.js, the way the page uses them."""

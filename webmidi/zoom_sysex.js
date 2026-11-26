@@ -14,15 +14,6 @@ export const KINDS = {
   query_program: "F0 52 00 <ID> 33 F7",
   query_patch: "F0 52 00 <ID> 64 13 F7",
 };
-// The same kinds in plain words (zoom_sysex.KIND_LABELS), for the approvals on the page.
-export const LABELS = {
-  identity_request: "Find the pedal and read its model and firmware",
-  edit_enable: "Switch on the pedal's editing mode, so that it reports turned knobs",
-  edit_disable: "Switch the editing mode off again when disconnecting",
-  set_param: "Change knob values of the preset on the pedal",
-  query_program: "Ask which preset is selected",
-  query_patch: "Read the effects and knob values of the preset on the pedal",
-};
 const FIXED_BODIES = {"50": "edit_enable", "51": "edit_disable", "33": "query_program", "64 13": "query_patch"};
 const FORBIDDEN_PREFIXES = [[0x01], [0x04], [0x5B], [0x28], [0x60], [0x64, 0x47], [0x64, 0x20, 0x00, 0x64],
                             [0x32], [0x45]];

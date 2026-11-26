@@ -3,10 +3,10 @@
 Runs in Pyodide (webmidi/index.html), which puts the program's files beside this one. MIDI goes
 through Web MIDI (mido_webmidi.py); the interface, ui.html unchanged, gets its answers from
 ui.answer through the page instead of over HTTP. The settings are those of the profile "phone",
-which the page keeps in the browser's storage. What probe.py setup asks in a terminal, the page
-asks: the approvals, then the pedal's device ID from its identity.
+which the page keeps in the browser's storage. Of what probe.py setup asks in a terminal, the page
+asks nothing: every message kind is allowed (allow_everything; the allowlist still decides what goes
+out), and the pedal's device ID is read from its identity.
 """
-import js
 import mido
 from pyodide.ffi import to_js
 
@@ -21,21 +21,15 @@ probe.CONFIG, probe.APPROVALS, probe.MEASUREMENTS = bridge.CONFIG, bridge.APPROV
 running = None
 
 
-def approvals() -> dict:
-    """What is approved, for the page's form: the backup, the kinds, which of them the bridge needs."""
+def allow_everything() -> None:
+    """Every message kind of the bridge allowed, and the backup taken as made: the phone asks nothing
+    (the page tells to make the backup). Only what is not allowed yet is written."""
     given = zs.Approvals(bridge.APPROVALS)
-    return to_js({"backup": given.backup_confirmed, "kinds": zs.KINDS, "labels": zs.KIND_LABELS,
-                  "required": list(bridge.REQUIRED_KINDS),
-                  "approved": [kind for kind in zs.KINDS if given.is_approved(kind)]},
-                 dict_converter=js.Object.fromEntries)
-
-
-def approve(backup: bool, kinds) -> None:
-    given = zs.Approvals(bridge.APPROVALS)
-    if backup:
+    if not given.backup_confirmed:
         given.confirm_backup()
-    for kind in kinds:
-        given.approve(kind)
+    for kind in zs.KINDS:
+        if not given.is_approved(kind):
+            given.approve(kind)
 
 
 def start():

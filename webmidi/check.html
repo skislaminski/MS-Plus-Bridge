@@ -32,10 +32,7 @@
 <body>
 <main>
 <h1>MIDI check</h1>
-<details id="approvalBox">
-  <summary>Approvals (as approvals.json)</summary>
-  <div id="approvals"></div>
-</details>
+<p>Back up your presets first (Zoom's own editor or the bridge's installer).</p>
 <p>
   <button id="connect">Connect pedal</button>
   <button id="disconnect" disabled>Disconnect</button>
@@ -51,35 +48,10 @@ import {Pedal} from "./pedal.js";
 
 const $ = (id) => document.getElementById(id);
 const SIMULATED = new URLSearchParams(location.search).has("sim");
-const STORE = "ms-plus-webmidi-approvals";
 let pedal = null, table = null;
 
-// --- Approvals: the backup confirmed once (rule 4), every message kind approved once (rule 5) ---
-const stored = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
-const approvals = {
-  get backupConfirmed() { return Boolean(stored().backup); },
-  isApproved: (kind) => Boolean(stored()[kind]),
-};
-function showApprovals() {
-  const rows = [["backup", "I have a backup of my presets (Zoom's own editor or the bridge's installer).", ""],
-                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, zs.LABELS[kind], `${kind}: ${form}`])];
-  $("approvals").replaceChildren(...rows.map(([key, text, form]) => {
-    const label = document.createElement("label"), box = document.createElement("input"), span = document.createElement("span");
-    box.type = "checkbox";
-    box.checked = Boolean(stored()[key]);
-    box.addEventListener("change", () => {
-      const all = stored();
-      if (box.checked) all[key] = new Date().toISOString(); else delete all[key];
-      try { localStorage.setItem(STORE, JSON.stringify(all)); } catch { say("This browser keeps nothing: approvals are lost on reload.", true); }
-    });
-    const code = document.createElement("code");
-    code.textContent = form;
-    span.append(text, ...(form ? [document.createElement("br"), code] : []));
-    label.append(box, span);
-    return label;
-  }));
-  $("approvalBox").open = !(approvals.backupConfirmed && Object.keys(zs.KINDS).every(approvals.isApproved));
-}
+// Every message it knows goes out without asking first: zoom_sysex.js still lets only these through.
+const approvals = {backupConfirmed: true, isApproved: () => true};
 
 // --- The page ---
 const say = (text, bad = false) => { $("status").textContent = text; $("status").className = bad ? "bad" : ""; };
@@ -145,9 +117,7 @@ $("connect").addEventListener("click", async () => {
     show();
     $("disconnect").disabled = false;
   } catch (error) {
-    say(error instanceof zs.NotApproved ? `Not allowed yet: “${zs.LABELS[error.kind] || error.kind}” – tick it under Approvals.`
-        : error.message, true);
-    if (error instanceof zs.NotApproved) $("approvalBox").open = true;
+    say(error.message, true);
     if (pedal) await pedal.close().catch(() => {});
     access?.stop?.();       // the simulated pedal's polling
     pedal = null;
@@ -165,7 +135,6 @@ $("disconnect").addEventListener("click", async () => {
   $("connect").disabled = false;
 });
 
-showApprovals();
 if (SIMULATED) say("Simulated pedal (tests/sim.py): nothing reaches a real one.");
 </script>
 </body>

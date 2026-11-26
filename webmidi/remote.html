@@ -104,10 +104,8 @@
 
   details { margin-top: 14px; border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; }
   summary { cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-  details label { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; }
-  details input[type=checkbox] { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--accent); }
   code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-  .tech { display: none; } .show-tech .tech { display: block; }   /* the MIDI bytes, for whoever wants them */
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
   pre { font-size: 11px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
   [hidden] { display: none !important; }
 </style>
@@ -136,6 +134,8 @@
     <button type="button" id="disconnect" hidden>Disconnect</button>
   </div>
   <p id="message"></p>
+  <p class="hint">Back up your presets first (Zoom's own editor or the bridge's installer): the remote changes
+    knob values on the pedal.</p>
 
   <section id="live" hidden>
     <div class="preset"><b id="preset">–</b><span id="patchName"></span></div>
@@ -143,13 +143,6 @@
     <div class="knobs" id="knobs"></div>
   </section>
 
-  <details id="approvalBox">
-    <summary>Approvals</summary>
-    <p>Before the remote may talk to your pedal, tick what it is allowed to do – once; this browser remembers
-      it. It does nothing else, and every value stays within what the effect allows.</p>
-    <div id="approvals"></div>
-    <p><button type="button" id="showTech">Show the MIDI messages</button></p>
-  </details>
   <details>
     <summary>MIDI</summary>
     <pre id="log"></pre>
@@ -161,38 +154,12 @@ import {Pedal} from "./pedal.js";
 
 const $ = (id) => document.getElementById(id);
 const SIMULATED = new URLSearchParams(location.search).has("sim");
-const STORE = "ms-plus-webmidi-approvals";       // shared with check.html: approved once is approved for both
 const SLOT = "ms-plus-remote-slot";
 let pedal = null, access = null, table = null, slot = 0, layout = "";
 
-// --- Approvals: the backup confirmed once (rule 4), every message kind approved once (rule 5) ---
-const stored = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
-const approvals = {
-  get backupConfirmed() { return Boolean(stored().backup); },
-  isApproved: (kind) => Boolean(stored()[kind]),
-};
-const allApproved = () => approvals.backupConfirmed && Object.keys(zs.KINDS).every(approvals.isApproved);
-function showApprovals() {
-  const rows = [["backup", "I have a backup of my presets (Zoom's own editor or the bridge's installer).", ""],
-                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, zs.LABELS[kind], `${kind}: ${form}`])];
-  $("approvals").replaceChildren(...rows.map(([key, text, form]) => {
-    const label = document.createElement("label"), box = document.createElement("input"), span = document.createElement("span");
-    box.type = "checkbox";
-    box.checked = Boolean(stored()[key]);
-    box.addEventListener("change", () => {
-      const all = stored();
-      if (box.checked) all[key] = new Date().toISOString(); else delete all[key];
-      try { localStorage.setItem(STORE, JSON.stringify(all)); } catch { say("This browser keeps nothing: the approvals are lost on reload.", true); }
-    });
-    const code = Object.assign(document.createElement("code"), {className: "tech", textContent: form});
-    span.append(text, ...(form ? [code] : []));
-    label.append(box, span);
-    return label;
-  }));
-  $("approvalBox").open = !allApproved();
-}
-$("showTech").addEventListener("click", () => $("approvals").classList.toggle("show-tech"));
-const notApproved = (error) => `Not allowed yet: “${zs.LABELS[error.kind] || error.kind}” – tick it under Approvals.`;
+// Every message the remote knows goes out without asking first: zoom_sysex.js still lets only these through,
+// with values within what the effect allows. A backup is asked for in the page's text.
+const approvals = {backupConfirmed: true, isApproved: () => true};
 
 // --- The page ---
 const say = (text, bad = false) => { $("message").textContent = text; $("message").className = bad ? "bad" : ""; };
@@ -321,8 +288,7 @@ async function drain() {
         await pedal.setKnob(target, param, value);
         if (![...pending.keys()].includes(key)) output.classList.remove("sent");
       } catch (error) {
-        say(error instanceof zs.NotApproved ? notApproved(error) : `Not sent: ${error.message}`, true);
-        if (error instanceof zs.NotApproved) $("approvalBox").open = true;
+        say(`Not sent: ${error.message}`, true);
         pending.clear();
       }
     }
@@ -358,10 +324,6 @@ async function disconnect(why) {
 $("connect").addEventListener("click", async () => {
   $("connect").disabled = true;
   try {
-    if (!allApproved()) {
-      $("approvalBox").open = true;
-      throw new Error("Tick the backup and everything under Approvals first.");
-    }
     table = table || await (await fetch("../zoom_effects.json")).json();
     say(SIMULATED ? "Connecting to the simulated pedal …" : "Asking for MIDI access …");
     access = await midiAccess();
@@ -381,8 +343,7 @@ $("connect").addEventListener("click", async () => {
     show();
   } catch (error) {
     await disconnect();
-    say(error instanceof zs.NotApproved ? notApproved(error) : error.message, true);
-    if (error instanceof zs.NotApproved) $("approvalBox").open = true;
+    say(error.message, true);
   } finally {
     $("connect").disabled = false;
   }
@@ -401,14 +362,13 @@ $("disconnect").addEventListener("click", () => disconnect({text: "Not connected
 // leaving the page: edit mode off again, as far as the browser still lets the message out
 window.addEventListener("pagehide", () => {
   if (!pedal || pedal.deviceId == null) return;
-  try { pedal.send(zs.buildEditDisable(pedal.deviceId)); } catch { /* not approved: nothing sent */ }
+  try { pedal.send(zs.buildEditDisable(pedal.deviceId)); } catch { /* the port gone already: nothing sent */ }
 });
 // back from the browser's page cache: edit mode went off on the way out, so connect anew
 window.addEventListener("pageshow", (event) => {
   if (event.persisted && pedal) disconnect({text: "Connect again: the page was away."});
 });
 
-showApprovals();
 setConnected(false);
 if (SIMULATED) say("Simulated pedal (tests/sim.py): nothing reaches a real one.");
 </script>

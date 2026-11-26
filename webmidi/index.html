@@ -17,9 +17,7 @@
   button { font: inherit; padding: 10px 16px; border-radius: 4px; border: 0; background: var(--accent); color: #1c0e03;
            font-weight: 700; min-height: 44px; }
   button:disabled { opacity: .4; }
-  label { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; }
-  .tech { display: none; } .show-tech .tech { display: block; }   /* the MIDI bytes, for whoever wants them */
-  code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .hint { color: var(--muted); font-size: 13px; }
   #status { margin: 12px 0; color: var(--muted); white-space: pre-wrap; }
   #status.bad { color: var(--bad); }
   iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
@@ -29,11 +27,8 @@
 <main id="launcher">
   <h1>MS Plus Bridge</h1>
   <div id="status">Loading …</div>
-  <form id="approvals" hidden>
-    <p>Tick what the bridge may do with your pedal – once; this browser remembers it. It does nothing else.</p>
-    <div id="kinds"></div>
-    <button type="submit">Save approvals</button> <button type="button" id="showTech">Show the MIDI messages</button>
-  </form>
+  <p class="hint">Back up your presets first (Zoom's own editor, or the installer of the bridge on a computer): the
+    bridge changes them on the pedal when you tell it to.</p>
   <p><button id="start" disabled>Connect pedal and start</button></p>
 </main>
 <iframe id="ui" title="MS Plus Bridge" hidden></iframe>
@@ -99,7 +94,7 @@ function showInterface() {
   $("launcher").hidden = true;
 }
 
-// --- Settings, approvals and the pedal's device ID: kept in the browser's storage (IndexedDB) ---
+// --- Settings and the pedal's device ID: kept in the browser's storage (IndexedDB) ---
 function sync(populate = false) {
   syncing = syncing.then(() => new Promise((resolve) => py.FS.syncfs(populate, (error) => {
     if (error) console.warn("settings not stored", error);
@@ -108,35 +103,14 @@ function sync(populate = false) {
   return syncing;
 }
 
-function showApprovals() {
-  const given = browser.approvals();
-  const ready = given.backup && given.required.every((kind) => given.approved.includes(kind));
-  const rows = [["backup", "The presets of the pedal are backed up (Zoom's own editor, or the installer of the bridge on a computer).", "", given.backup],
-                ...Object.entries(given.kinds).map(([kind, form]) => [
-                  kind, given.labels[kind] + (given.required.includes(kind) ? " (needed to start)" : ""),
-                  `${kind}: ${form}`, given.approved.includes(kind)])];
-  $("kinds").replaceChildren(...rows.map(([key, text, form, done]) => {
-    const label = document.createElement("label"), box = document.createElement("input"), span = document.createElement("span");
-    const code = Object.assign(document.createElement("code"), {className: "tech", textContent: form});
-    Object.assign(box, {type: "checkbox", name: key, checked: done, disabled: done});
-    span.append(text, ...(form ? [code] : []));
-    label.append(box, span);
-    return label;
-  }));
-  $("approvals").hidden = ready && given.approved.length === Object.keys(given.kinds).length;
-  $("start").disabled = !ready;
-  if (!ready) say("First the approvals: what the bridge may send to the pedal.");
-  else say(SIMULATED ? "Simulated pedal (tests/sim.py): nothing reaches a real one." : "Plug the pedal in (USB-OTG), then start.");
-}
-
-$("showTech").addEventListener("click", () => $("kinds").classList.toggle("show-tech"));
-$("approvals").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const ticked = [...$("kinds").querySelectorAll("input:checked:not(:disabled)")].map((box) => box.name);
-  browser.approve(ticked.includes("backup"), ticked.filter((name) => name !== "backup"));
+// Everything the bridge knows may go out without asking first (browser.allow_everything): its allowlist still
+// lets only those messages through, with values within what was learned. A backup is asked for in the text.
+async function ready() {
+  browser.allow_everything();
   await sync();
-  showApprovals();
-});
+  $("start").disabled = false;
+  say(SIMULATED ? "Simulated pedal (tests/sim.py): nothing reaches a real one." : "Plug the pedal in (USB-OTG), then start.");
+}
 
 // --- Start ---
 async function keepAwake() {
@@ -198,7 +172,7 @@ $("start").addEventListener("click", async () => {
     await sync(true);
     py.runPython(`import os, sys; sys.path.insert(0, "${ROOT}"); os.chdir("${ROOT}")`);
     browser = py.pyimport("browser");
-    showApprovals();
+    await ready();
   } catch (error) {
     say(`The bridge could not be loaded: ${error.message || error}`, true);
   }

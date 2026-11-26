@@ -59,27 +59,6 @@ KINDS = {
                    "pedal reported last, 7-bit packed> <CRC32, 5 bytes> F7",
 }
 
-# The same kinds in plain words, for whoever approves them without knowing SysEx (the pages for the phone).
-KIND_LABELS = {
-    "identity_request": "Find the pedal and read its model and firmware",
-    "edit_enable": "Switch on the pedal's editing mode, so that it reports turned knobs",
-    "edit_disable": "Switch the editing mode off again when disconnecting",
-    "set_param": "Change knob values of the preset on the pedal",
-    "query_program": "Ask which preset is selected",
-    "query_patch": "Read the effects and knob values of the preset on the pedal",
-    "switch_effect": "Switch effects on and off",
-    "rename_patch": "Rename the preset",
-    "change_effect": "Put another effect into a place of the chain (one the pedal has)",
-    "move_effect": "Move an effect to another place in the chain",
-    "add_effect": "Add an empty place to the chain",
-    "delete_effect": "Remove an effect from the chain",
-    "read_pedal": "Read which files are on the pedal (which effects are installed)",
-    "read_effect_file": "Read the installed effect files (their names and knobs)",
-    "select_preset": "Select another preset",
-    "query_preset": "Read the stored presets (their names and effects)",
-    "save_preset": "Save a preset on the pedal (it replaces the preset in that place)",
-}
-
 _FIXED_BODIES = {
     bytes([0x50]): "edit_enable",
     bytes([0x51]): "edit_disable",
