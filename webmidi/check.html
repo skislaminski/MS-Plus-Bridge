@@ -62,7 +62,7 @@ const approvals = {
 };
 function showApprovals() {
   const rows = [["backup", "I have a backup of my presets (Zoom's own editor or the bridge's installer).", ""],
-                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, kind, form])];
+                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, zs.LABELS[kind], `${kind}: ${form}`])];
   $("approvals").replaceChildren(...rows.map(([key, text, form]) => {
     const label = document.createElement("label"), box = document.createElement("input"), span = document.createElement("span");
     box.type = "checkbox";
@@ -145,7 +145,8 @@ $("connect").addEventListener("click", async () => {
     show();
     $("disconnect").disabled = false;
   } catch (error) {
-    say(error instanceof zs.NotApproved ? `Not approved: ${error.kind} – tick it under Approvals.` : error.message, true);
+    say(error instanceof zs.NotApproved ? `Not allowed yet: “${zs.LABELS[error.kind] || error.kind}” – tick it under Approvals.`
+        : error.message, true);
     if (error instanceof zs.NotApproved) $("approvalBox").open = true;
     if (pedal) await pedal.close().catch(() => {});
     access?.stop?.();       // the simulated pedal's polling

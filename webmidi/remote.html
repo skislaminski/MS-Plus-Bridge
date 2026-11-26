@@ -107,6 +107,7 @@
   details label { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; }
   details input[type=checkbox] { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--accent); }
   code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .tech { display: none; } .show-tech .tech { display: block; }   /* the MIDI bytes, for whoever wants them */
   pre { font-size: 11px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
   [hidden] { display: none !important; }
 </style>
@@ -144,9 +145,10 @@
 
   <details id="approvalBox">
     <summary>Approvals</summary>
-    <p>The remote sends only these messages, each after you ticked it once (as <code>probe.py approve</code>
-      on a computer). Every value it sends stays within the range the pedal's effect allows.</p>
+    <p>Before the remote may talk to your pedal, tick what it is allowed to do – once; this browser remembers
+      it. It does nothing else, and every value stays within what the effect allows.</p>
     <div id="approvals"></div>
+    <p><button type="button" id="showTech">Show the MIDI messages</button></p>
   </details>
   <details>
     <summary>MIDI</summary>
@@ -172,7 +174,7 @@ const approvals = {
 const allApproved = () => approvals.backupConfirmed && Object.keys(zs.KINDS).every(approvals.isApproved);
 function showApprovals() {
   const rows = [["backup", "I have a backup of my presets (Zoom's own editor or the bridge's installer).", ""],
-                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, kind, form])];
+                ...Object.entries(zs.KINDS).map(([kind, form]) => [kind, zs.LABELS[kind], `${kind}: ${form}`])];
   $("approvals").replaceChildren(...rows.map(([key, text, form]) => {
     const label = document.createElement("label"), box = document.createElement("input"), span = document.createElement("span");
     box.type = "checkbox";
@@ -182,14 +184,15 @@ function showApprovals() {
       if (box.checked) all[key] = new Date().toISOString(); else delete all[key];
       try { localStorage.setItem(STORE, JSON.stringify(all)); } catch { say("This browser keeps nothing: the approvals are lost on reload.", true); }
     });
-    const code = document.createElement("code");
-    code.textContent = form;
-    span.append(text, ...(form ? [document.createElement("br"), code] : []));
+    const code = Object.assign(document.createElement("code"), {className: "tech", textContent: form});
+    span.append(text, ...(form ? [code] : []));
     label.append(box, span);
     return label;
   }));
   $("approvalBox").open = !allApproved();
 }
+$("showTech").addEventListener("click", () => $("approvals").classList.toggle("show-tech"));
+const notApproved = (error) => `Not allowed yet: “${zs.LABELS[error.kind] || error.kind}” – tick it under Approvals.`;
 
 // --- The page ---
 const say = (text, bad = false) => { $("message").textContent = text; $("message").className = bad ? "bad" : ""; };
@@ -318,7 +321,7 @@ async function drain() {
         await pedal.setKnob(target, param, value);
         if (![...pending.keys()].includes(key)) output.classList.remove("sent");
       } catch (error) {
-        say(error instanceof zs.NotApproved ? `Not approved: ${error.kind} – tick it under Approvals.` : `Not sent: ${error.message}`, true);
+        say(error instanceof zs.NotApproved ? notApproved(error) : `Not sent: ${error.message}`, true);
         if (error instanceof zs.NotApproved) $("approvalBox").open = true;
         pending.clear();
       }
@@ -357,7 +360,7 @@ $("connect").addEventListener("click", async () => {
   try {
     if (!allApproved()) {
       $("approvalBox").open = true;
-      throw new Error("Tick the backup and every message under Approvals first.");
+      throw new Error("Tick the backup and everything under Approvals first.");
     }
     table = table || await (await fetch("../zoom_effects.json")).json();
     say(SIMULATED ? "Connecting to the simulated pedal …" : "Asking for MIDI access …");
@@ -378,7 +381,7 @@ $("connect").addEventListener("click", async () => {
     show();
   } catch (error) {
     await disconnect();
-    say(error instanceof zs.NotApproved ? `Not approved: ${error.kind} – tick it under Approvals.` : error.message, true);
+    say(error instanceof zs.NotApproved ? notApproved(error) : error.message, true);
     if (error instanceof zs.NotApproved) $("approvalBox").open = true;
   } finally {
     $("connect").disabled = false;

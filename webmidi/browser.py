@@ -24,7 +24,8 @@ running = None
 def approvals() -> dict:
     """What is approved, for the page's form: the backup, the kinds, which of them the bridge needs."""
     given = zs.Approvals(bridge.APPROVALS)
-    return to_js({"backup": given.backup_confirmed, "kinds": zs.KINDS, "required": list(bridge.REQUIRED_KINDS),
+    return to_js({"backup": given.backup_confirmed, "kinds": zs.KINDS, "labels": zs.KIND_LABELS,
+                  "required": list(bridge.REQUIRED_KINDS),
                   "approved": [kind for kind in zs.KINDS if given.is_approved(kind)]},
                  dict_converter=js.Object.fromEntries)
 
