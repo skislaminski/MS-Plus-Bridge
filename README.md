@@ -47,7 +47,7 @@ own commands.
 
 ## Getting started
 
-Download this repository (green **Code** button → **Download ZIP**), unpack it and start it:
+Download **[MS-Plus-Bridge.zip](https://github.com/skislaminski/MS-Plus-Bridge/releases/latest/download/MS-Plus-Bridge.zip)** (the latest release), unpack it and start it:
 
 | System | Start |
 |---|---|

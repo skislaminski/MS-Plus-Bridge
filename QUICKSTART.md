@@ -16,7 +16,7 @@ The short way to a running bridge. Everything in detail: [README](README.md).
 
 ## 1. Download and start
 
-Download this repository (green **Code** button → **Download ZIP**) and unpack it. Then start it:
+Download **[MS-Plus-Bridge.zip](https://github.com/skislaminski/MS-Plus-Bridge/releases/latest/download/MS-Plus-Bridge.zip)** (the latest release) and unpack it. Then start it:
 
 | System | Start |
 |---|---|

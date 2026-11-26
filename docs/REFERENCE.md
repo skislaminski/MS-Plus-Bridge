@@ -126,8 +126,8 @@ See [Installation](#installation) for all three systems.
 
 ## Installation
 
-You need **Python 3.9 or newer** and this repository: click the green **Code** button →
-**Download ZIP** and unpack it, or clone it.
+You need **Python 3.9 or newer** and the program: download **[MS-Plus-Bridge.zip](https://github.com/skislaminski/MS-Plus-Bridge/releases/latest/download/MS-Plus-Bridge.zip)** (the latest
+release) and unpack it, or clone this repository.
 
 ### macOS
 
